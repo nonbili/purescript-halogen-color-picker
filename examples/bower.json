@@ -1,0 +1,22 @@
+{
+  "name": "examples",
+  "description": "purescript-halogen-color-picker examples",
+  "license": "BSD-3-Clause",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components"
+  ],
+  "dependencies": {
+    "purescript-halogen-color-picker": "*",
+    "purescript-halogen-storybook": "git@github.com:thomashoneyman/purescript-halogen-storybook.git#master"
+  },
+  "devDependencies": {
+    "purescript-psci-support": "^4.0.0",
+    "purescript-debug": "^4.0.0"
+  },
+  "resolutions": {
+    "purescript-halogen": "e43096ccde699f68f1803acd23bab493a7190e2c"
+  }
+}

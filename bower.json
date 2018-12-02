@@ -1,0 +1,28 @@
+{
+  "name": "purescript-halogen-color-picker",
+  "description": "A color picker in purescript halogen",
+  "authors": [
+    "Ping Chen <remotenonsense@gmail.com>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/nonbili/purescript-halogen-color-picker.git"
+  },
+  "license": "BSD-3-Clause",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "output",
+    "examples",
+    "docs"
+  ],
+  "dependencies": {
+    "purescript-halogen": "https://github.com/slamdata/purescript-halogen.git#e43096ccde699f68f1803acd23bab493a7190e2c",
+    "purescript-generics-rep": "^6.0.0",
+    "purescript-colors": "^5.0.0"
+  },
+  "devDependencies": {
+    "purescript-psci-support": "^4.0.0"
+  }
+}
