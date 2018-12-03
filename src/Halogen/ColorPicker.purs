@@ -6,6 +6,7 @@ import Color as Color
 import Data.Foldable (traverse_)
 import Data.Int as Int
 import Data.Maybe (Maybe(..))
+import Data.String as String
 import Effect.Class (class MonadEffect)
 import Halogen as H
 import Halogen.HTML as HH
@@ -23,6 +24,7 @@ data Query a
   = Init a
   | OnClickSaturation MouseEvent a
   | OnClickHue MouseEvent a
+  | OnClickAlpha MouseEvent a
 
 type State =
   { h :: Number
@@ -50,6 +52,21 @@ initialState =
 
 percentage :: Number -> String
 percentage v = show (v * 100.0) <> "%"
+
+toHexString :: State -> String
+toHexString { h, s, v, a } =
+  Color.toHexString (Color.hsv h s v) <> toHex (Int.round $ a * 255.0)
+  where
+  toHex i =
+    let
+      hex = Int.toStringAs Int.hexadecimal i
+    in
+      if i == 255
+      then ""
+      else
+        if String.length hex == 1
+        then "0" <> hex
+        else hex
 
 sliderShadow :: String
 sliderShadow = "0 3px 1px -2px rgba(0,0,0,.2),0 2px 2px 0 rgba(0,0,0,.14),0 1px 5px 0 rgba(0,0,0,.12);"
@@ -97,17 +114,28 @@ renderHuePicker state =
     []
   ]
 
+alphaRef :: H.RefLabel
+alphaRef = H.RefLabel "alpha"
+
 renderAlphaPicker :: forall m. State -> HTML m
 renderAlphaPicker state =
   HH.div
-  [ style "margin-top: 0.5rem; position: relative; height: 0.75rem; background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%); border-radius: 2px;"
-  , HP.ref hueRef
-  , HE.onClick $ HE.input OnClickHue
+  [ style "margin-top: 0.5rem; position: relative; height: 0.75rem; border-radius: 2px;      background-image: linear-gradient(90deg, #ccc 0.375rem, white 0.375rem), linear-gradient(90deg, white 0.375rem, #ccc 0.375rem); background-position: 0 0, 0 0.375rem; background-repeat: repeat-x; background-size: 0.75rem 0.375rem, 0.75rem 0.375rem;"
+  , HP.ref alphaRef
+  , HE.onClick $ HE.input OnClickAlpha
   ]
   [ HH.div
-    [ style $ "position: absolute; top: -0.125rem; height: 1rem; width: 1rem; transform: translateX(-0.5rem); background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage (state.h / 360.0) ]
+    [ style $ "position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 2px; background: " <> bg
+    ]
+    []
+  , HH.div
+    [ style $ "position: absolute; top: -0.125rem; height: 1rem; width: 1rem; transform: translateX(-0.5rem); background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage state.a ]
     []
   ]
+  where
+  start = Color.hsva state.h state.s state.v 0.0
+  end = Color.hsva state.h state.s state.v 1.0
+  bg = "linear-gradient(to right, " <> Color.cssStringRGBA start <> " 0%, " <> Color.cssStringRGBA end <> " 100%);"
 
 render :: forall m. State -> HTML m
 render state =
@@ -128,7 +156,7 @@ render state =
   , HH.text color
   ]
   where
-  color = Color.toHexString $ Color.hsv state.h state.s state.v
+  color = toHexString state
 
 component :: forall m. MonadEffect m => H.Component HH.HTML Query Unit Void m
 component = H.component
@@ -163,4 +191,13 @@ component = H.component
       H.modify_ $ _
         { h = hue
         , hueColor = Color.hsv hue 1.0 1.0
+        }
+
+  eval (OnClickAlpha mouseEvent n) = n <$ do
+    H.getHTMLElementRef hueRef >>= traverse_ \el -> do
+      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
+      let
+        alpha = (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
+      H.modify_ $ _
+        { a = alpha
         }
