@@ -25,6 +25,17 @@ data Query a
   | OnClickSaturation MouseEvent a
   | OnClickHue MouseEvent a
   | OnClickAlpha MouseEvent a
+  | OnToggleMode a
+
+data Mode
+  = ModeHex
+  | ModeRGBA
+  | ModeHSLA
+
+nextMode :: Mode -> Mode
+nextMode ModeHex = ModeRGBA
+nextMode ModeRGBA = ModeHSLA
+nextMode ModeHSLA = ModeHex
 
 type State =
   { h :: Number
@@ -32,6 +43,7 @@ type State =
   , v :: Number
   , a :: Number
   , hueColor :: Color.Color
+  , mode :: Mode
   }
 
 type HTML m = H.ComponentHTML Query () m
@@ -48,6 +60,7 @@ initialState =
   , v: 0.0
   , a: 1.0
   , hueColor: Color.hsv 0.0 1.0 1.0
+  , mode: ModeHex
   }
 
 percentage :: Number -> String
@@ -137,6 +150,21 @@ renderAlphaPicker state =
   end = Color.hsva state.h state.s state.v 1.0
   bg = "linear-gradient(to right, " <> Color.cssStringRGBA start <> " 0%, " <> Color.cssStringRGBA end <> " 100%);"
 
+renderHexMode :: forall m. State -> HTML m
+renderHexMode state =
+  HH.input
+  [ HP.type_ HP.InputText
+  , HP.value $ toHexString state
+  ]
+
+renderRGBAMode :: forall m. State -> HTML m
+renderRGBAMode state =
+  HH.text "rgba"
+
+renderHSLAMode :: forall m. State -> HTML m
+renderHSLAMode state =
+  HH.text "hsla"
+
 render :: forall m. State -> HTML m
 render state =
   HH.div
@@ -153,7 +181,16 @@ render state =
       , renderAlphaPicker state
       ]
     ]
-  , HH.text color
+  , HH.div
+    [ style "display: flex; align-items: center;"]
+    [ case state.mode of
+        ModeHex -> renderHexMode state
+        ModeRGBA -> renderRGBAMode state
+        ModeHSLA -> renderHSLAMode state
+    , HH.button
+      [ HE.onClick $ HE.input_ OnToggleMode ]
+      [ HH.text "toggle" ]
+    ]
   ]
   where
   color = toHexString state
@@ -201,3 +238,6 @@ component = H.component
       H.modify_ $ _
         { a = alpha
         }
+
+  eval (OnToggleMode n) = n <$ do
+    H.modify_ $ \s -> s { mode = nextMode s.mode }
