@@ -20,7 +20,8 @@
   "dependencies": {
     "purescript-halogen": "https://github.com/slamdata/purescript-halogen.git#e43096ccde699f68f1803acd23bab493a7190e2c",
     "purescript-generics-rep": "^6.0.0",
-    "purescript-colors": "^5.0.0"
+    "purescript-colors": "^5.0.0",
+    "purescript-numbers": "^6.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0"

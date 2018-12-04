@@ -5,10 +5,12 @@ import Prelude
 import Color as Color
 import Data.Foldable (traverse_)
 import Data.Int as Int
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Number as Number
 import Data.String as String
 import Effect.Class (class MonadEffect)
 import Halogen as H
+import Halogen.ColorPicker.TextInput as TextInput
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
@@ -26,6 +28,8 @@ data Query a
   | OnClickHue MouseEvent a
   | OnClickAlpha MouseEvent a
   | OnToggleMode a
+  | OnHexChange String a
+  | OnColorChange Color.Color a
 
 data Mode
   = ModeHex
@@ -42,7 +46,6 @@ type State =
   , s :: Number
   , v :: Number
   , a :: Number
-  , hueColor :: Color.Color
   , mode :: Mode
   }
 
@@ -59,7 +62,6 @@ initialState =
   , s: 0.0
   , v: 0.0
   , a: 1.0
-  , hueColor: Color.hsv 0.0 1.0 1.0
   , mode: ModeHex
   }
 
@@ -109,7 +111,8 @@ renderSaturationPicker state =
     ]
   ]
   where
-  hueBackground = "background:" <> Color.toHexString state.hueColor <> " none repeat scroll 0% 0%;"
+  hueColor = Color.hsv state.h 1.0 1.0
+  hueBackground = "background:" <> Color.toHexString hueColor <> " none repeat scroll 0% 0%;"
   absolute = "position: absolute; top: 0; right: 0; bottom: 0; left: 0;"
 
 hueRef :: H.RefLabel
@@ -152,18 +155,70 @@ renderAlphaPicker state =
 
 renderHexMode :: forall m. State -> HTML m
 renderHexMode state =
-  HH.input
-  [ HP.type_ HP.InputText
-  , HP.value $ toHexString state
-  ]
+  TextInput.render
+  [ HP.value $ toHexString state
+  ] OnHexChange
 
 renderRGBAMode :: forall m. State -> HTML m
 renderRGBAMode state =
-  HH.text "rgba"
+  HH.div
+  [ style "min-width: 0"]
+  [ HH.div
+    [ style "display: flex; min-width: 0"]
+    [ TextInput.render
+      [ HP.value $ show r
+      ] (\v -> OnColorChange $ (Color.rgba (fromMaybe r $ Int.fromString v) g b a))
+    , TextInput.render
+      [ HP.value $ show g
+      ] (\v -> OnColorChange $ (Color.rgba r (fromMaybe g $ Int.fromString v) b a))
+    , TextInput.render
+      [ HP.value $ show b
+      ] (\v -> OnColorChange $ (Color.rgba r g (fromMaybe b $ Int.fromString v) a))
+    , TextInput.render
+      [ HP.value $ show a
+      ] (\v -> OnColorChange $ (Color.rgba r g b (fromMaybe a $ Number.fromString v)))
+    ]
+  , HH.div
+    [ style "display: flex; justify-content: space-around;"]
+    [ HH.span_ [ HH.text "R" ]
+    , HH.span_ [ HH.text "G" ]
+    , HH.span_ [ HH.text "B" ]
+    , HH.span_ [ HH.text "A" ]
+    ]
+  ]
+  where
+  { h, s, v, a } = state
+  { r, g, b } = Color.toRGBA $ Color.hsva h s v a
 
 renderHSLAMode :: forall m. State -> HTML m
 renderHSLAMode state =
-  HH.text "hsla"
+  HH.div
+  [ style "min-width: 0"]
+  [ HH.div
+    [ style "display: flex;"]
+    [ TextInput.render
+      [ HP.value $ show $ Int.round h
+      ] (\v -> OnColorChange $ (Color.hsla (fromMaybe h $ Number.fromString v) s l a))
+    , TextInput.render
+      [ HP.value $ show $ Int.round $ 100.0 * s
+      ] (\v -> OnColorChange $ (Color.hsla h (fromMaybe s $ Number.fromString v) l a))
+    , TextInput.render
+      [ HP.value $ show $ Int.round $ 100.0 * l
+      ] (\v -> OnColorChange $ (Color.hsla h s (fromMaybe l $ Number.fromString v) a))
+    , TextInput.render
+      [ HP.value $ show a
+      ] (\v -> OnColorChange $ (Color.hsla h s l (fromMaybe a $ Number.fromString v)))
+    ]
+  , HH.div
+    [ style "display: flex; justify-content: space-around;"]
+    [ HH.span_ [ HH.text "H" ]
+    , HH.span_ [ HH.text "S" ]
+    , HH.span_ [ HH.text "L" ]
+    , HH.span_ [ HH.text "A" ]
+    ]
+  ]
+  where
+  { h, s, l, a } = Color.toHSLA $ Color.hsva state.h state.s state.v state.a
 
 render :: forall m. State -> HTML m
 render state =
@@ -227,7 +282,6 @@ component = H.component
         hue = 360.0 * (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
       H.modify_ $ _
         { h = hue
-        , hueColor = Color.hsv hue 1.0 1.0
         }
 
   eval (OnClickAlpha mouseEvent n) = n <$ do
@@ -241,3 +295,10 @@ component = H.component
 
   eval (OnToggleMode n) = n <$ do
     H.modify_ $ \s -> s { mode = nextMode s.mode }
+
+  eval (OnHexChange hex n) = n <$ do
+    pure unit
+
+  eval (OnColorChange color n) = n <$ do
+    let { h, s, v, a } = Color.toHSVA color
+    H.modify_ $ _ { h = h, s = s, v = v, a = a }
