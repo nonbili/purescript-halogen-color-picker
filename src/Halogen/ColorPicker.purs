@@ -13,6 +13,7 @@ import Data.String.Regex.Flags (noFlags) as Regex
 import Effect.Class (class MonadEffect)
 import Halogen as H
 import Halogen.ColorPicker.TextInput as TextInput
+import Halogen.ColorPicker.Util as Util
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
@@ -40,6 +41,8 @@ data Mode
   | ModeRGBA
   | ModeHSLA
 
+derive instance eqMode :: Eq Mode
+
 nextMode :: Mode -> Mode
 nextMode ModeHex = ModeRGBA
 nextMode ModeRGBA = ModeHSLA
@@ -47,11 +50,12 @@ nextMode ModeHSLA = ModeHex
 
 type State =
   { props :: Props
+  , mode :: Mode
   , h :: Number
   , s :: Number
   , v :: Number
   , a :: Number
-  , mode :: Mode
+  , hex :: String
   , alpha :: String
   }
 
@@ -69,6 +73,8 @@ deriveStateFromProps props state = state
   , s = s
   , v = v
   , a = a
+  , hex = Util.toHexString props
+  , alpha = show a
   }
   where
   { h, s, v, a } = Color.toHSVA props
@@ -76,31 +82,17 @@ deriveStateFromProps props state = state
 initialState :: Props -> State
 initialState props = deriveStateFromProps props
   { props
+  , mode: ModeHex
   , h: 0.0
   , s: 0.0
   , v: 0.0
   , a: 1.0
-  , mode: ModeHex
+  , hex: "#000"
   , alpha: "1"
   }
 
 percentage :: Number -> String
 percentage v = show (v * 100.0) <> "%"
-
-toHexString :: State -> String
-toHexString { h, s, v, a } =
-  Color.toHexString (Color.hsv h s v) <> toHex (Int.round $ a * 255.0)
-  where
-  toHex i =
-    let
-      hex = Int.toStringAs Int.hexadecimal i
-    in
-      if i == 255
-      then ""
-      else
-        if String.length hex == 1
-        then "0" <> hex
-        else hex
 
 stateToColor :: State -> Color.Color
 stateToColor { h, s, v, a } =
@@ -185,7 +177,7 @@ renderHexMode state =
   HH.div
   [ style "flex: 1" ]
   [ TextInput.render
-    [ HP.value $ toHexString state
+    [ HP.value state.hex
     ] OnHexChange
   , HH.div
     [ style modeLabelStyle]
@@ -295,7 +287,7 @@ render state =
     ]
   ]
   where
-  color = toHexString state
+  color = Util.toHexString $ stateToColor state
 
 component :: forall m. MonadEffect m => H.Component HH.HTML Query Props Message m
 component = H.component
@@ -309,8 +301,15 @@ component = H.component
   where
   raise :: DSL m Unit
   raise = do
-    { h, s, v, a } <- H.get
-    H.raise $ Color.hsva h s v a
+    H.get >>= H.raise <<< stateToColor
+
+  propagateHexChange :: DSL m Unit
+  propagateHexChange = do
+    state <- H.get
+    when (state.mode == ModeHex) $
+      H.modify_ $ \s -> s
+        { hex = Util.toHexString $ stateToColor s
+        }
 
   eval :: Query ~> DSL m
   eval (Init n) = n <$ do
@@ -318,7 +317,7 @@ component = H.component
 
   eval (OnReceiveProps props n) = n <$ do
     state <- H.get
-    when (state.props /= props) $
+    when (stateToColor state /= props) $
       H.put $ deriveStateFromProps props state
 
   eval (OnClickSaturation mouseEvent n) = n <$ do
@@ -331,6 +330,7 @@ component = H.component
         { s = saturation
         , v = value
         }
+    propagateHexChange
     raise
 
   eval (OnClickHue mouseEvent n) = n <$ do
@@ -341,6 +341,7 @@ component = H.component
       H.modify_ $ _
         { h = hue
         }
+    propagateHexChange
     raise
 
   eval (OnClickAlpha mouseEvent n) = n <$ do
@@ -352,17 +353,24 @@ component = H.component
         { a = a
         , alpha = String.take 4 $ show a
         }
+    propagateHexChange
     raise
 
   eval (OnToggleMode n) = n <$ do
     for_ (Regex.regex "\\.0*$" Regex.noFlags) \re ->
       H.modify_ $ \s -> s
         { mode = nextMode s.mode
+        , hex = Util.toHexString $ stateToColor s
         , alpha = Regex.replace re "" $ String.take 4 $ show s.a
         }
 
   eval (OnHexChange hex n) = n <$ do
-    pure unit
+    H.modify_ $ _ { hex = hex }
+    for_ (Util.fromHexString hex) \color -> do
+      let
+        { h, s, v, a } = Color.toHSVA color
+      H.modify_ $ _ { h = h, s = s, v = v, a = a }
+      raise
 
   eval (OnColorChange color n) = n <$ do
     let { h, s, v, a } = Color.toHSVA color
