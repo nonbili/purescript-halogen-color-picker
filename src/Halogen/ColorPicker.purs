@@ -105,7 +105,7 @@ renderSaturationPicker state =
       [ style $ absolute <> "background: rgba(0, 0, 0, 0) linear-gradient(to top, rgb(0, 0, 0), rgba(0, 0, 0, 0)) repeat scroll 0% 0%;"]
       []
     , HH.div
-      [ style $ "position: absolute; height: 20px; width: 20px; transform: translate(-10px, 10px); background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage state.s <> "; bottom: " <> percentage state.v
+      [ style $ "position: absolute; height: 0.75rem; width: 0.75rem; transform: translate(-0.375rem, 0.375rem); border: 1px solid white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage state.s <> "; bottom: " <> percentage state.v
       ]
       []
     ]
@@ -136,7 +136,7 @@ alphaRef = H.RefLabel "alpha"
 renderAlphaPicker :: forall m. State -> HTML m
 renderAlphaPicker state =
   HH.div
-  [ style "margin-top: 0.5rem; position: relative; height: 0.75rem; border-radius: 2px;      background-image: linear-gradient(90deg, #ccc 0.375rem, white 0.375rem), linear-gradient(90deg, white 0.375rem, #ccc 0.375rem); background-position: 0 0, 0 0.375rem; background-repeat: repeat-x; background-size: 0.75rem 0.375rem, 0.75rem 0.375rem;"
+  [ style $ "margin-top: 0.5rem; position: relative; height: 0.75rem; border-radius: 2px; background-size: 0.75rem; background-image: url(" <> chessImage <> ")"
   , HP.ref alphaRef
   , HE.onClick $ HE.input OnClickAlpha
   ]
@@ -220,6 +220,9 @@ renderHSLAMode state =
   where
   { h, s, l, a } = Color.toHSLA $ Color.hsva state.h state.s state.v state.a
 
+chessImage :: String
+chessImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAACXBIWXMAACxLAAAsSwGlPZapAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAvSURBVHgBrY2xDQAwDMJIX+L/D+CmtCNbhsYbyJJLUiMgmRMHA/9C9SMP28uJUbgnXwpuyvWUTwAAAABJRU5ErkJggg=="
+
 render :: forall m. State -> HTML m
 render state =
   HH.div
@@ -228,8 +231,11 @@ render state =
   , HH.div
     [ style "margin: 1rem 0; display: flex; align-items: center;"]
     [ HH.div
-      [ style $ "width: 2.25rem; height: 2.25rem; border-radius: 100%; background:" <> color ]
-      []
+      [ style $ "position: relative; width: 2.25rem; height: 2.25rem; border-radius: 100%; background-size: 0.75rem; background-image: url(" <> chessImage <> ")" ]
+      [ HH.div
+        [ style $ "position: absolute; width: 100%; height: 100%; border-radius: 100%; background:" <> color ]
+        []
+      ]
     , HH.div
       [ style "flex: 1; margin-left: 1rem;"]
       [ renderHuePicker state
