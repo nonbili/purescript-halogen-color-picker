@@ -164,9 +164,15 @@ renderAlphaPicker state =
 
 renderHexMode :: forall m. State -> HTML m
 renderHexMode state =
-  TextInput.render
-  [ HP.value $ toHexString state
-  ] OnHexChange
+  HH.div
+  [ style "flex: 1" ]
+  [ TextInput.render
+    [ HP.value $ toHexString state
+    ] OnHexChange
+  , HH.div
+    [ style "display: flex; justify-content: space-around; margin-top: 0.25rem"]
+    [ HH.text "HEX"]
+  ]
 
 renderRGBAMode :: forall m. State -> HTML m
 renderRGBAMode state =
@@ -260,8 +266,14 @@ render state =
         ModeRGBA -> renderRGBAMode state
         ModeHSLA -> renderHSLAMode state
     , HH.button
-      [ HE.onClick $ HE.input_ OnToggleMode ]
-      [ HH.text "toggle" ]
+      [ style "display: flex; padding: 0.25rem 0.375rem; margin-left: 1rem;"
+      , HE.onClick $ HE.input_ OnToggleMode
+      ]
+      [ HH.img
+        [ style "width: 8px"
+        , HP.src "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAkCAYAAACTz/ouAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAHNSURBVHgB7Ve7coJAFN0FP4CUasMngI4zltql1DJlviCTLl0mXbpMOv/COhWmS8YH5A+oNOnMByg5l0EGRti9aMaKM+MAsvfchXvYe9YUFdDpdB6bzaa72Ww+uDEmd2C32x1JKSf4XbdarRBJvjhxkjPIcRzbNE0fp1by19YwjOF8Pg90sQaT3MuQE6z9fj+le7p4qSG3kpnbJUPC3W7nBkGwLeNQPkGj0fAU5AR6uqnifnmRoZgXHEZCD7vdblvr9fqNnYDkCLU8CD76kK+Ast61CSDHO5A/i4pAzKBIvrkio6hOUtSTgUTDxWIxO1wbGXJtwTiIoignXyNDrlMMFyRtj/ON1KhRo8alEC/XtDDBJXhYam3xD8CKGsIUDNGrw7QfFFiTs8npOu0HcTYpx+JMgHx8IM8lIFAnwgxuxYnABO9BnjNjRz0ZPTWAS6BXNxDVyJ8wwaNeXugqYEFmaOBXOO0LHl6Xy2WhC1E6OzgMaqMD1Ri80mC1Wrll95XODrZwTKpQkMeKUXEoE5DnJIKiJBk5blUcLPve6/UckKUOG+SU2M3KsQysDQiK/g1r+AOlxF4Vxxvf91m7HPYOh+SLJL9YUj6hmAk37g/mJ8izUZNyPwAAAABJRU5ErkJggg=="
+        ]
+      ]
     ]
   ]
   where

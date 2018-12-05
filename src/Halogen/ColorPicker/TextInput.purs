@@ -19,7 +19,7 @@ render
   -> HH.HTML p (f Unit)
 render props action =
   HH.input $ props <>
-  [ HP.attr (HH.AttrName "style") "width: auto; min-width: 0; margin: 0 0.25rem; text-align: center;"
+  [ HP.attr (HH.AttrName "style") "width: 100%; min-width: 0; text-align: center;"
   , HP.type_ HP.InputText
   , HE.onValueInput $ HE.input action
   ]
