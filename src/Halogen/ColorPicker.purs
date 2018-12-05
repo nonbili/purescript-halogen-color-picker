@@ -20,12 +20,13 @@ import Web.HTML.HTMLElement as HTMLElement
 import Web.UIEvent.MouseEvent (MouseEvent)
 import Web.UIEvent.MouseEvent as MouseEvent
 
-type Props = Unit
+type Props = Color.Color
 
-type Message = Void
+type Message = Color.Color
 
 data Query a
   = Init a
+  | OnReceiveProps Props a
   | OnClickSaturation MouseEvent a
   | OnClickHue MouseEvent a
   | OnClickAlpha MouseEvent a
@@ -45,7 +46,8 @@ nextMode ModeRGBA = ModeHSLA
 nextMode ModeHSLA = ModeHex
 
 type State =
-  { h :: Number
+  { props :: Props
+  , h :: Number
   , s :: Number
   , v :: Number
   , a :: Number
@@ -55,14 +57,26 @@ type State =
 
 type HTML m = H.ComponentHTML Query () m
 
-type DSL m = H.HalogenM State Query () Void m
+type DSL m = H.HalogenM State Query () Message m
 
 style :: forall r i. String -> HP.IProp ("style" :: String | r) i
 style = HP.attr (HH.AttrName "style")
 
-initialState :: State
-initialState =
-  { h: 0.0
+deriveStateFromProps :: Props -> State -> State
+deriveStateFromProps props state = state
+  { props = props
+  , h = h
+  , s = s
+  , v = v
+  , a = a
+  }
+  where
+  { h, s, v, a } = Color.toHSVA props
+
+initialState :: Props -> State
+initialState props = deriveStateFromProps props
+  { props
+  , h: 0.0
   , s: 0.0
   , v: 0.0
   , a: 1.0
@@ -162,6 +176,10 @@ renderAlphaPicker state =
   end = Color.hsva state.h state.s state.v 1.0
   bg = "linear-gradient(to right, " <> Color.cssStringRGBA start <> " 0%, " <> Color.cssStringRGBA end <> " 100%);"
 
+modeLabelStyle :: String
+modeLabelStyle =
+  "display: flex; justify-content: space-around; margin-top: 0.25rem; font-size: 0.75rem; color: #999;"
+
 renderHexMode :: forall m. State -> HTML m
 renderHexMode state =
   HH.div
@@ -170,7 +188,7 @@ renderHexMode state =
     [ HP.value $ toHexString state
     ] OnHexChange
   , HH.div
-    [ style "display: flex; justify-content: space-around; margin-top: 0.25rem"]
+    [ style modeLabelStyle]
     [ HH.text "HEX"]
   ]
 
@@ -195,7 +213,7 @@ renderRGBAMode state =
       ] OnAlphaInputChange
     ]
   , HH.div
-    [ style "display: flex; justify-content: space-around; margin-top: 0.25rem"]
+    [ style modeLabelStyle ]
     [ HH.span_ [ HH.text "R" ]
     , HH.span_ [ HH.text "G" ]
     , HH.span_ [ HH.text "B" ]
@@ -227,7 +245,7 @@ renderHSLAMode state =
       ] OnAlphaInputChange
     ]
   , HH.div
-    [ style "display: flex; justify-content: space-around; margin-top: 0.25rem"]
+    [ style modeLabelStyle ]
     [ HH.span_ [ HH.text "H" ]
     , HH.span_ [ HH.text "S" ]
     , HH.span_ [ HH.text "L" ]
@@ -266,7 +284,7 @@ render state =
         ModeRGBA -> renderRGBAMode state
         ModeHSLA -> renderHSLAMode state
     , HH.button
-      [ style "display: flex; padding: 0.25rem 0.375rem; margin-left: 1rem;"
+      [ style "display: flex; padding: 0.25rem 0.375rem; margin-left: 1rem; cursor: pointer;"
       , HE.onClick $ HE.input_ OnToggleMode
       ]
       [ HH.img
@@ -279,19 +297,29 @@ render state =
   where
   color = toHexString state
 
-component :: forall m. MonadEffect m => H.Component HH.HTML Query Unit Void m
+component :: forall m. MonadEffect m => H.Component HH.HTML Query Props Message m
 component = H.component
-  { initialState: const initialState
+  { initialState
   , render
   , eval
-  , receiver: const Nothing
+  , receiver: HE.input OnReceiveProps
   , initializer: Nothing
   , finalizer: Nothing
   }
   where
+  raise :: DSL m Unit
+  raise = do
+    { h, s, v, a } <- H.get
+    H.raise $ Color.hsva h s v a
+
   eval :: Query ~> DSL m
   eval (Init n) = n <$ do
     pure unit
+
+  eval (OnReceiveProps props n) = n <$ do
+    state <- H.get
+    when (state.props /= props) $
+      H.put $ deriveStateFromProps props state
 
   eval (OnClickSaturation mouseEvent n) = n <$ do
     H.getHTMLElementRef saturationRef >>= traverse_ \el -> do
@@ -303,6 +331,7 @@ component = H.component
         { s = saturation
         , v = value
         }
+    raise
 
   eval (OnClickHue mouseEvent n) = n <$ do
     H.getHTMLElementRef hueRef >>= traverse_ \el -> do
@@ -312,6 +341,7 @@ component = H.component
       H.modify_ $ _
         { h = hue
         }
+    raise
 
   eval (OnClickAlpha mouseEvent n) = n <$ do
     H.getHTMLElementRef hueRef >>= traverse_ \el -> do
@@ -322,6 +352,7 @@ component = H.component
         { a = a
         , alpha = String.take 4 $ show a
         }
+    raise
 
   eval (OnToggleMode n) = n <$ do
     for_ (Regex.regex "\\.0*$" Regex.noFlags) \re ->
@@ -336,9 +367,11 @@ component = H.component
   eval (OnColorChange color n) = n <$ do
     let { h, s, v, a } = Color.toHSVA color
     H.modify_ $ _ { h = h, s = s, v = v }
+    raise
 
   eval (OnAlphaInputChange alpha n) = n <$ do
     H.modify_ $ \s -> s
       { a = max 0.0 $ min 1.0 $ fromMaybe s.a $ Number.fromString alpha
       , alpha = alpha
       }
+    raise
