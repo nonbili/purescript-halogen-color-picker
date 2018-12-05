@@ -3,11 +3,13 @@ module Halogen.ColorPicker where
 import Prelude
 
 import Color as Color
-import Data.Foldable (traverse_)
+import Data.Foldable (for_, traverse_)
 import Data.Int as Int
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Number as Number
 import Data.String as String
+import Data.String.Regex (regex, replace) as Regex
+import Data.String.Regex.Flags (noFlags) as Regex
 import Effect.Class (class MonadEffect)
 import Halogen as H
 import Halogen.ColorPicker.TextInput as TextInput
@@ -30,6 +32,7 @@ data Query a
   | OnToggleMode a
   | OnHexChange String a
   | OnColorChange Color.Color a
+  | OnAlphaInputChange String a
 
 data Mode
   = ModeHex
@@ -47,6 +50,7 @@ type State =
   , v :: Number
   , a :: Number
   , mode :: Mode
+  , alpha :: String
   }
 
 type HTML m = H.ComponentHTML Query () m
@@ -63,6 +67,7 @@ initialState =
   , v: 0.0
   , a: 1.0
   , mode: ModeHex
+  , alpha: "1"
   }
 
 percentage :: Number -> String
@@ -82,6 +87,10 @@ toHexString { h, s, v, a } =
         if String.length hex == 1
         then "0" <> hex
         else hex
+
+stateToColor :: State -> Color.Color
+stateToColor { h, s, v, a } =
+  Color.hsva h s v a
 
 sliderShadow :: String
 sliderShadow = "0 3px 1px -2px rgba(0,0,0,.2),0 2px 2px 0 rgba(0,0,0,.14),0 1px 5px 0 rgba(0,0,0,.12);"
@@ -175,11 +184,12 @@ renderRGBAMode state =
       [ HP.value $ show b
       ] (\v -> OnColorChange $ (Color.rgba r g (fromMaybe b $ Int.fromString v) a))
     , TextInput.render
-      [ HP.value $ show a
-      ] (\v -> OnColorChange $ (Color.rgba r g b (fromMaybe a $ Number.fromString v)))
+      [ HP.value state.alpha
+      , HP.attr (HH.AttrName "maxlength") "4"
+      ] OnAlphaInputChange
     ]
   , HH.div
-    [ style "display: flex; justify-content: space-around;"]
+    [ style "display: flex; justify-content: space-around; margin-top: 0.25rem"]
     [ HH.span_ [ HH.text "R" ]
     , HH.span_ [ HH.text "G" ]
     , HH.span_ [ HH.text "B" ]
@@ -206,11 +216,12 @@ renderHSLAMode state =
       [ HP.value $ show $ Int.round $ 100.0 * l
       ] (\v -> OnColorChange $ (Color.hsla h s (fromMaybe l $ Number.fromString v) a))
     , TextInput.render
-      [ HP.value $ show a
-      ] (\v -> OnColorChange $ (Color.hsla h s l (fromMaybe a $ Number.fromString v)))
+      [ HP.value state.alpha
+      , HP.attr (HH.AttrName "maxlength") "4"
+      ] OnAlphaInputChange
     ]
   , HH.div
-    [ style "display: flex; justify-content: space-around;"]
+    [ style "display: flex; justify-content: space-around; margin-top: 0.25rem"]
     [ HH.span_ [ HH.text "H" ]
     , HH.span_ [ HH.text "S" ]
     , HH.span_ [ HH.text "L" ]
@@ -294,17 +305,28 @@ component = H.component
     H.getHTMLElementRef hueRef >>= traverse_ \el -> do
       rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
       let
-        alpha = (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
+        a = (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
       H.modify_ $ _
-        { a = alpha
+        { a = a
+        , alpha = String.take 4 $ show a
         }
 
   eval (OnToggleMode n) = n <$ do
-    H.modify_ $ \s -> s { mode = nextMode s.mode }
+    for_ (Regex.regex "\\.0*$" Regex.noFlags) \re ->
+      H.modify_ $ \s -> s
+        { mode = nextMode s.mode
+        , alpha = Regex.replace re "" $ String.take 4 $ show s.a
+        }
 
   eval (OnHexChange hex n) = n <$ do
     pure unit
 
   eval (OnColorChange color n) = n <$ do
     let { h, s, v, a } = Color.toHSVA color
-    H.modify_ $ _ { h = h, s = s, v = v, a = a }
+    H.modify_ $ _ { h = h, s = s, v = v }
+
+  eval (OnAlphaInputChange alpha n) = n <$ do
+    H.modify_ $ \s -> s
+      { a = max 0.0 $ min 1.0 $ fromMaybe s.a $ Number.fromString alpha
+      , alpha = alpha
+      }
