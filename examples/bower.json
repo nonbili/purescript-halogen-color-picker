@@ -9,7 +9,6 @@
     "bower_components"
   ],
   "dependencies": {
-    "purescript-halogen-color-picker": "*",
     "purescript-halogen-storybook": "git@github.com:thomashoneyman/purescript-halogen-storybook.git#master"
   },
   "devDependencies": {

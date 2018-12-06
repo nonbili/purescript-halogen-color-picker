@@ -1,4 +1,9 @@
-module Halogen.ColorPicker where
+module Halogen.ColorPicker
+  ( Props
+  , Query
+  , Message
+  , component
+  ) where
 
 import Prelude
 
