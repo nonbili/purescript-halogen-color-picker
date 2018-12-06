@@ -41,9 +41,7 @@ data Query a
   | OnReceiveProps Props a
   | OnDocumentMouseMove MouseEvent a
   | OnDocumentMouseUp MouseEvent a
-  | OnMouseDownSaturationLightness MouseEvent a
-  | OnMouseDownHue MouseEvent a
-  | OnMouseDownAlpha MouseEvent a
+  | OnMouseDownPicker Picker MouseEvent a
   | OnToggleMode a
   | OnHexChange String a
   | OnColorChange Color.Color a
@@ -133,7 +131,7 @@ renderSaturationLightnessPicker state =
   HH.div
   [ style "position: relative; width: 320px; height: 200px;"
   , HP.ref saturationRef
-  , HE.onMouseDown $ HE.input OnMouseDownSaturationLightness
+  , HE.onMouseDown $ HE.input $ OnMouseDownPicker PickerSaturationLightness
   ]
   [ HH.div
     [ style $ absolute <> hueBackground ]
@@ -164,7 +162,7 @@ renderHuePicker state =
   HH.div
   [ style "position: relative; height: 0.75rem; background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%); border-radius: 2px;"
   , HP.ref hueRef
-  , HE.onMouseDown $ HE.input OnMouseDownHue
+  , HE.onMouseDown $ HE.input $ OnMouseDownPicker PickerHue
   ]
   [ HH.div
     [ style $ "position: absolute; top: -0.125rem; height: 1rem; width: 1rem; transform: translateX(-0.5rem); background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage (state.h / 360.0) ]
@@ -179,7 +177,7 @@ renderAlphaPicker state =
   HH.div
   [ style $ "margin-top: 0.5rem; position: relative; height: 0.75rem; border-radius: 2px; background-size: 0.75rem; background-image: url(" <> chessImage <> ")"
   , HP.ref alphaRef
-  , HE.onMouseDown $ HE.input OnMouseDownAlpha
+  , HE.onMouseDown $ HE.input $ OnMouseDownPicker PickerAlpha
   ]
   [ HH.div
     [ style $ "position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 2px; background: " <> bg
@@ -423,23 +421,15 @@ component = H.component
   eval (OnDocumentMouseUp mouseEvent n) = n <$ do
     H.modify_ $ _ { activeMouseDownPicker = Nothing }
 
-  eval (OnMouseDownSaturationLightness mouseEvent n) = n <$ do
+  eval (OnMouseDownPicker picker mouseEvent n) = n <$ do
     -- Without preventDefault, sometimes mouseup is not fired up.
     H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
-    H.modify_ $ _ { activeMouseDownPicker = Just PickerSaturationLightness }
-    handleSaturationLightnessOnMouseEvent mouseEvent
-
-  eval (OnMouseDownHue mouseEvent n) = n <$ do
-    -- Without preventDefault, sometimes mouseup is not fired up.
-    H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
-    H.modify_ $ _ { activeMouseDownPicker = Just PickerHue }
-    handleHueOnMouseEvent mouseEvent
-
-  eval (OnMouseDownAlpha mouseEvent n) = n <$ do
-    -- Without preventDefault, sometimes mouseup is not fired up.
-    H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
-    H.modify_ $ _ { activeMouseDownPicker = Just PickerAlpha }
-    handleAlphaOnMouseEvent mouseEvent
+    H.modify_ $ _ { activeMouseDownPicker = Just picker }
+    case picker of
+      PickerSaturationLightness ->
+        handleSaturationLightnessOnMouseEvent mouseEvent
+      PickerHue -> handleHueOnMouseEvent mouseEvent
+      PickerAlpha -> handleAlphaOnMouseEvent mouseEvent
 
   eval (OnToggleMode n) = n <$ do
     for_ (Regex.regex "\\.0*$" Regex.noFlags) \re ->
