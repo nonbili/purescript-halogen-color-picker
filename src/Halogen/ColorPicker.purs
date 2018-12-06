@@ -42,8 +42,8 @@ data Query a
   | OnDocumentMouseMove MouseEvent a
   | OnDocumentMouseUp MouseEvent a
   | OnMouseDownSaturationLightness MouseEvent a
-  | OnClickHue MouseEvent a
-  | OnClickAlpha MouseEvent a
+  | OnMouseDownHue MouseEvent a
+  | OnMouseDownAlpha MouseEvent a
   | OnToggleMode a
   | OnHexChange String a
   | OnColorChange Color.Color a
@@ -164,7 +164,7 @@ renderHuePicker state =
   HH.div
   [ style "position: relative; height: 0.75rem; background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%); border-radius: 2px;"
   , HP.ref hueRef
-  , HE.onClick $ HE.input OnClickHue
+  , HE.onMouseDown $ HE.input OnMouseDownHue
   ]
   [ HH.div
     [ style $ "position: absolute; top: -0.125rem; height: 1rem; width: 1rem; transform: translateX(-0.5rem); background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage (state.h / 360.0) ]
@@ -179,7 +179,7 @@ renderAlphaPicker state =
   HH.div
   [ style $ "margin-top: 0.5rem; position: relative; height: 0.75rem; border-radius: 2px; background-size: 0.75rem; background-image: url(" <> chessImage <> ")"
   , HP.ref alphaRef
-  , HE.onClick $ HE.input OnClickAlpha
+  , HE.onMouseDown $ HE.input OnMouseDownAlpha
   ]
   [ HH.div
     [ style $ "position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 2px; background: " <> bg
@@ -355,6 +355,31 @@ component = H.component
         propagateHexChange
         raise
 
+  handleHueOnMouseEvent :: MouseEvent -> DSL m Unit
+  handleHueOnMouseEvent mouseEvent = do
+    H.getHTMLElementRef hueRef >>= traverse_ \el -> do
+      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
+      let
+        hue = 360.0 * (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
+      H.modify_ $ _
+        { h = max 0.0 $ min 360.0 hue
+        }
+    propagateHexChange
+    raise
+
+  handleAlphaOnMouseEvent :: MouseEvent -> DSL m Unit
+  handleAlphaOnMouseEvent mouseEvent = do
+    H.getHTMLElementRef hueRef >>= traverse_ \el -> do
+      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
+      let
+        a = max 0.0 $ min 1.0 $ (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
+      H.modify_ $ _
+        { a = a
+        , alpha = String.take 4 $ show a
+        }
+    propagateHexChange
+    raise
+
   eval :: Query ~> DSL m
   eval (Init n) = n <$ do
     doc <- H.liftEffect $ Web.window >>= Window.document
@@ -389,7 +414,8 @@ component = H.component
               case picker of
                 PickerSaturationLightness ->
                   handleSaturationLightnessOnMouseEvent event
-                _ -> pure unit
+                PickerHue -> handleHueOnMouseEvent event
+                PickerAlpha -> handleAlphaOnMouseEvent event
 
           H.modify_ $ _ { throttler = Just var }
         Just _ -> pure unit
@@ -403,28 +429,17 @@ component = H.component
     H.modify_ $ _ { activeMouseDownPicker = Just PickerSaturationLightness }
     handleSaturationLightnessOnMouseEvent mouseEvent
 
-  eval (OnClickHue mouseEvent n) = n <$ do
-    H.getHTMLElementRef hueRef >>= traverse_ \el -> do
-      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
-      let
-        hue = 360.0 * (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
-      H.modify_ $ _
-        { h = hue
-        }
-    propagateHexChange
-    raise
+  eval (OnMouseDownHue mouseEvent n) = n <$ do
+    -- Without preventDefault, sometimes mouseup is not fired up.
+    H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
+    H.modify_ $ _ { activeMouseDownPicker = Just PickerHue }
+    handleHueOnMouseEvent mouseEvent
 
-  eval (OnClickAlpha mouseEvent n) = n <$ do
-    H.getHTMLElementRef hueRef >>= traverse_ \el -> do
-      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
-      let
-        a = (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
-      H.modify_ $ _
-        { a = a
-        , alpha = String.take 4 $ show a
-        }
-    propagateHexChange
-    raise
+  eval (OnMouseDownAlpha mouseEvent n) = n <$ do
+    -- Without preventDefault, sometimes mouseup is not fired up.
+    H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
+    H.modify_ $ _ { activeMouseDownPicker = Just PickerAlpha }
+    handleAlphaOnMouseEvent mouseEvent
 
   eval (OnToggleMode n) = n <$ do
     for_ (Regex.regex "\\.0*$" Regex.noFlags) \re ->
