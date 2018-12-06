@@ -10,6 +10,10 @@ import Data.Number as Number
 import Data.String as String
 import Data.String.Regex (regex, replace) as Regex
 import Data.String.Regex.Flags (noFlags) as Regex
+import Effect.Aff (Milliseconds(..))
+import Effect.Aff as Aff
+import Effect.Aff.AVar (AVar)
+import Effect.Aff.AVar as AVar
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.ColorPicker.TextInput as TextInput
@@ -19,6 +23,7 @@ import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 import Halogen.Query.EventSource as ES
 import Web.DOM.Document as Document
+import Web.Event.Event as Event
 import Web.HTML as Web
 import Web.HTML.HTMLDocument as HTMLDocument
 import Web.HTML.HTMLElement as HTMLElement
@@ -71,6 +76,8 @@ type State =
   , hex :: String
   , alpha :: String
   , activeMouseDownPicker :: Maybe Picker
+  , throttler :: Maybe (AVar Unit)
+  , mouseEvent :: Maybe MouseEvent
   }
 
 type HTML m = H.ComponentHTML Query () m
@@ -104,6 +111,8 @@ initialState props = deriveStateFromProps props
   , hex: "#000"
   , alpha: "1"
   , activeMouseDownPicker: Nothing
+  , throttler: Nothing
+  , mouseEvent: Nothing
   }
 
 percentage :: Number -> String
@@ -125,7 +134,6 @@ renderSaturationLightnessPicker state =
   [ style "position: relative; width: 320px; height: 200px;"
   , HP.ref saturationRef
   , HE.onMouseDown $ HE.input OnMouseDownSaturationLightness
-  -- , HE.onMouseMove $ HE.input OnMouseMove
   ]
   [ HH.div
     [ style $ absolute <> hueBackground ]
@@ -365,16 +373,33 @@ component = H.component
       H.put $ deriveStateFromProps props state
 
   eval (OnDocumentMouseMove mouseEvent n) = n <$ do
-    state <- H.get
-    for_ state.activeMouseDownPicker $ case _ of
-      PickerSaturationLightness ->
-        handleSaturationLightnessOnMouseEvent mouseEvent
-      _ -> pure unit
+    state <- H.modify $ _ { mouseEvent = Just mouseEvent }
+    for_ state.activeMouseDownPicker \picker -> do
+      case state.throttler of
+        Nothing -> do
+          var <- H.liftAff AVar.empty
+          void $ H.liftAff $ Aff.forkAff do
+            Aff.delay $ Milliseconds 100.0
+            AVar.put unit var
+
+          void $ H.fork do
+            H.liftAff $ AVar.take var
+            state' <- H.modify $ _ { throttler = Nothing }
+            for_ state'.mouseEvent \event ->
+              case picker of
+                PickerSaturationLightness ->
+                  handleSaturationLightnessOnMouseEvent event
+                _ -> pure unit
+
+          H.modify_ $ _ { throttler = Just var }
+        Just _ -> pure unit
 
   eval (OnDocumentMouseUp mouseEvent n) = n <$ do
     H.modify_ $ _ { activeMouseDownPicker = Nothing }
 
   eval (OnMouseDownSaturationLightness mouseEvent n) = n <$ do
+    -- Without preventDefault, sometimes mouseup is not fired up.
+    H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
     H.modify_ $ _ { activeMouseDownPicker = Just PickerSaturationLightness }
     handleSaturationLightnessOnMouseEvent mouseEvent
 
