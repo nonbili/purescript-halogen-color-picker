@@ -10,16 +10,22 @@ import Data.Number as Number
 import Data.String as String
 import Data.String.Regex (regex, replace) as Regex
 import Data.String.Regex.Flags (noFlags) as Regex
-import Effect.Class (class MonadEffect)
+import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.ColorPicker.TextInput as TextInput
 import Halogen.ColorPicker.Util as Util
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
+import Halogen.Query.EventSource as ES
+import Web.DOM.Document as Document
+import Web.HTML as Web
+import Web.HTML.HTMLDocument as HTMLDocument
 import Web.HTML.HTMLElement as HTMLElement
+import Web.HTML.Window as Window
 import Web.UIEvent.MouseEvent (MouseEvent)
 import Web.UIEvent.MouseEvent as MouseEvent
+import Web.UIEvent.MouseEvent.EventTypes as ET
 
 type Props = Color.Color
 
@@ -28,7 +34,9 @@ type Message = Color.Color
 data Query a
   = Init a
   | OnReceiveProps Props a
-  | OnClickSaturation MouseEvent a
+  | OnDocumentMouseMove MouseEvent a
+  | OnDocumentMouseUp MouseEvent a
+  | OnMouseDownSaturationLightness MouseEvent a
   | OnClickHue MouseEvent a
   | OnClickAlpha MouseEvent a
   | OnToggleMode a
@@ -48,6 +56,11 @@ nextMode ModeHex = ModeRGBA
 nextMode ModeRGBA = ModeHSLA
 nextMode ModeHSLA = ModeHex
 
+data Picker
+  = PickerSaturationLightness
+  | PickerHue
+  | PickerAlpha
+
 type State =
   { props :: Props
   , mode :: Mode
@@ -57,6 +70,7 @@ type State =
   , a :: Number
   , hex :: String
   , alpha :: String
+  , activeMouseDownPicker :: Maybe Picker
   }
 
 type HTML m = H.ComponentHTML Query () m
@@ -89,6 +103,7 @@ initialState props = deriveStateFromProps props
   , a: 1.0
   , hex: "#000"
   , alpha: "1"
+  , activeMouseDownPicker: Nothing
   }
 
 percentage :: Number -> String
@@ -104,18 +119,21 @@ sliderShadow = "0 3px 1px -2px rgba(0,0,0,.2),0 2px 2px 0 rgba(0,0,0,.14),0 1px 
 saturationRef :: H.RefLabel
 saturationRef = H.RefLabel "saturation"
 
-renderSaturationPicker :: forall m. State -> HTML m
-renderSaturationPicker state =
+renderSaturationLightnessPicker :: forall m. State -> HTML m
+renderSaturationLightnessPicker state =
   HH.div
   [ style "position: relative; width: 320px; height: 200px;"
   , HP.ref saturationRef
-  , HE.onClick $ HE.input OnClickSaturation
+  , HE.onMouseDown $ HE.input OnMouseDownSaturationLightness
+  -- , HE.onMouseMove $ HE.input OnMouseMove
   ]
   [ HH.div
     [ style $ absolute <> hueBackground ]
+    -- saturation
     [ HH.div
       [ style $ absolute <> "background: rgba(0, 0, 0, 0) linear-gradient(to right, rgb(255, 255, 255), rgba(255, 255, 255, 0)) repeat scroll 0% 0%;"]
       []
+    -- lightness
     , HH.div
       [ style $ absolute <> "background: rgba(0, 0, 0, 0) linear-gradient(to top, rgb(0, 0, 0), rgba(0, 0, 0, 0)) repeat scroll 0% 0%;"]
       []
@@ -254,7 +272,7 @@ render :: forall m. State -> HTML m
 render state =
   HH.div
   [ style "width: 20rem;"]
-  [ renderSaturationPicker state
+  [ renderSaturationLightnessPicker state
   , HH.div
     [ style "margin: 1rem 0; display: flex; align-items: center;"]
     [ HH.div
@@ -289,13 +307,13 @@ render state =
   where
   color = Util.toHexString $ stateToColor state
 
-component :: forall m. MonadEffect m => H.Component HH.HTML Query Props Message m
+component :: forall m. MonadAff m => H.Component HH.HTML Query Props Message m
 component = H.component
   { initialState
   , render
   , eval
   , receiver: HE.input OnReceiveProps
-  , initializer: Nothing
+  , initializer: Just $ H.action Init
   , finalizer: Nothing
   }
   where
@@ -311,27 +329,54 @@ component = H.component
         { hex = Util.toHexString $ stateToColor s
         }
 
+  handleSaturationLightnessOnMouseEvent :: MouseEvent -> DSL m Unit
+  handleSaturationLightnessOnMouseEvent mouseEvent = do
+    H.getHTMLElementRef saturationRef >>= traverse_ \el -> do
+      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
+      let
+        saturation = (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
+        value = (rect.height - Int.toNumber (MouseEvent.pageY mouseEvent) + rect.top) / rect.height
+        s = max 0.0 $ min 1.0 saturation
+        v = max 0.0 $ min 1.0 value
+      state <- H.get
+      when (state.s /= s && state.v /= v) $ do
+        H.modify_ $ _
+          { s = s
+          , v = v
+          }
+        propagateHexChange
+        raise
+
   eval :: Query ~> DSL m
   eval (Init n) = n <$ do
-    pure unit
+    doc <- H.liftEffect $ Web.window >>= Window.document
+    let docTarget = Document.toEventTarget $ HTMLDocument.toDocument doc
+    void $ H.subscribe $
+      ES.eventListenerEventSource ET.mousemove docTarget
+        (map (H.action <<< OnDocumentMouseMove) <<< MouseEvent.fromEvent)
+    H.subscribe $
+      ES.eventListenerEventSource ET.mouseup docTarget
+        (map (H.action <<< OnDocumentMouseUp) <<< MouseEvent.fromEvent)
+
 
   eval (OnReceiveProps props n) = n <$ do
     state <- H.get
     when (stateToColor state /= props) $
       H.put $ deriveStateFromProps props state
 
-  eval (OnClickSaturation mouseEvent n) = n <$ do
-    H.getHTMLElementRef saturationRef >>= traverse_ \el -> do
-      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
-      let
-        saturation = (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
-        value = (rect.height - Int.toNumber (MouseEvent.pageY mouseEvent) + rect.top) / rect.height
-      H.modify_ $ _
-        { s = saturation
-        , v = value
-        }
-    propagateHexChange
-    raise
+  eval (OnDocumentMouseMove mouseEvent n) = n <$ do
+    state <- H.get
+    for_ state.activeMouseDownPicker $ case _ of
+      PickerSaturationLightness ->
+        handleSaturationLightnessOnMouseEvent mouseEvent
+      _ -> pure unit
+
+  eval (OnDocumentMouseUp mouseEvent n) = n <$ do
+    H.modify_ $ _ { activeMouseDownPicker = Nothing }
+
+  eval (OnMouseDownSaturationLightness mouseEvent n) = n <$ do
+    H.modify_ $ _ { activeMouseDownPicker = Just PickerSaturationLightness }
+    handleSaturationLightnessOnMouseEvent mouseEvent
 
   eval (OnClickHue mouseEvent n) = n <$ do
     H.getHTMLElementRef hueRef >>= traverse_ \el -> do

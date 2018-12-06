@@ -5,7 +5,7 @@ import Prelude
 import Color as Color
 import Data.Maybe (Maybe(..))
 import Data.Symbol (SProxy(..))
-import Effect.Class (class MonadEffect)
+import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.ColorPicker as CP
 import Halogen.HTML as HH
@@ -23,7 +23,7 @@ type Slot = (picker :: H.Slot CP.Query CP.Message Unit)
 
 _picker = SProxy :: SProxy "picker"
 
-render :: forall m. MonadEffect m => State -> H.ComponentHTML Query Slot m
+render :: forall m. MonadAff m => State -> H.ComponentHTML Query Slot m
 render state =
   HH.div_
   [ HH.h1_
@@ -40,7 +40,7 @@ initialState =
   { color: Color.rgb 0 140 255
   }
 
-component :: forall m. MonadEffect m => H.Component HH.HTML Query Unit Void m
+component :: forall m. MonadAff m => H.Component HH.HTML Query Unit Void m
 component = H.component
   { initialState: const initialState
   , render
