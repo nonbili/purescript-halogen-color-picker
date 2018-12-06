@@ -8,20 +8,18 @@ import Prelude
 import Color (Color)
 import Color as Color
 import Data.Int as Int
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe, fromMaybe)
 import Data.String as String
-import Debug.Trace (trace)
 
 toHexString :: Color -> String
 toHexString color =
   Color.toHexString (Color.hsv h s v) <> toHex (Int.round $ a * 255.0)
   where
   { h, s, v, a } = Color.toHSVA color
-  toHex i =
+  toHex i = do
     let
       hex = Int.toStringAs Int.hexadecimal i
-    in
-      if i == 255
+    if i == 255
       then ""
       else
         if String.length hex == 1
@@ -29,25 +27,18 @@ toHexString color =
         else hex
 
 fromHexString' :: String -> String -> Maybe Color
-fromHexString' hex alpha =
-  case Color.fromHexString hex of
-    Nothing -> Nothing
-    Just color -> do
-      let
-        { h, s, v } = Color.toHSVA color
-        a = Int.toNumber $ fromMaybe 100 $ Int.fromStringAs Int.hexadecimal alpha
-        aa =
-          if String.length alpha == 2
-          then a / 255.0
-          else (a * 16.0 + a) / 255.0
-        _ = trace {alpha, a, aa} $ const ""
-      Just $ Color.hsva h s v aa
+fromHexString' hex alpha = (Color.fromHexString hex) <#> \color -> do
+  let
+    { h, s, v } = Color.toHSVA color
+    a = Int.toNumber $ fromMaybe 255 $ Int.fromStringAs Int.hexadecimal alpha
+    aa =
+      if String.length alpha == 2
+      then a / 255.0
+      else (a * 16.0 + a) / 255.0
+  Color.hsva h s v aa
 
 fromHexString :: String -> Maybe Color
-fromHexString hex = do
-  case Color.fromHexString hex of
-    Just color -> Just color
-    Nothing -> case String.length hex of
-      5 -> fromHexString' (String.take 4 hex) (String.drop 4 hex)
-      9 -> fromHexString' (String.take 7 hex) (String.drop 7 hex)
-      _ -> Nothing
+fromHexString hex = case String.length hex of
+  5 -> fromHexString' (String.take 4 hex) (String.drop 4 hex)
+  9 -> fromHexString' (String.take 7 hex) (String.drop 7 hex)
+  _ -> Color.fromHexString hex
