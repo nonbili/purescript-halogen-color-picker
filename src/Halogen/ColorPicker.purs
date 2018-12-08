@@ -10,6 +10,7 @@ import Prelude
 import Color as Color
 import DOM.HTML.Indexed (HTMLinput)
 import Data.Array as Array
+import Data.Either (Either(..))
 import Data.Foldable (for_, traverse_)
 import Data.Int as Int
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -51,7 +52,6 @@ data Query a
   | OnDocumentMouseUp MouseEvent a
   | OnMouseDownPicker Picker MouseEvent a
   | OnToggleMode a
-  | OnKeyDown KeyboardEvent a
   | OnColorChangeByKeyDown InputSource KeyboardEvent a
   | OnColorChangeByInput InputSource String a
 
@@ -111,7 +111,7 @@ deriveStateFromProps props state = state
   , v = v
   , a = a
   , hex = Util.toHexString props
-  , alpha = show a
+  , alpha = formatAlpha a
   }
   where
   { h, s, v, a } = Color.toHSVA props
@@ -131,6 +131,10 @@ initialState props = deriveStateFromProps props
   , mouseEvent: Nothing
   }
 
+stateToColor :: State -> Color.Color
+stateToColor { h, s, v, a } =
+  Color.hsva h s v a
+
 percentage :: Number -> String
 percentage v = show (v * 100.0) <> "%"
 
@@ -140,9 +144,10 @@ increaseOnePercent v = (v * 100.0 + 1.0) / 100.0
 decreaseOnePercent :: Number -> Number
 decreaseOnePercent v = (v * 100.0 - 1.0) / 100.0
 
-stateToColor :: State -> Color.Color
-stateToColor { h, s, v, a } =
-  Color.hsva h s v a
+formatAlpha :: Number -> String
+formatAlpha a = case Regex.regex "\\.0*$" Regex.noFlags of
+  Left _ -> show a
+  Right re -> Regex.replace re "" $ String.take 4 $ show a
 
 sliderShadow :: String
 sliderShadow = "0 3px 1px -2px rgba(0,0,0,.2),0 2px 2px 0 rgba(0,0,0,.14),0 1px 5px 0 rgba(0,0,0,.12);"
@@ -410,7 +415,7 @@ component = H.component
         a = max 0.0 $ min 1.0 $ (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
       H.modify_ $ _
         { a = a
-        , alpha = String.take 4 $ show a
+        , alpha = formatAlpha a
         }
     propagateHexChange
     raise
@@ -476,15 +481,11 @@ component = H.component
       PickerAlpha -> handleAlphaOnMouseEvent mouseEvent
 
   eval (OnToggleMode n) = n <$ do
-    for_ (Regex.regex "\\.0*$" Regex.noFlags) \re ->
-      H.modify_ $ \s -> s
-        { mode = nextMode s.mode
-        , hex = Util.toHexString $ stateToColor s
-        , alpha = Regex.replace re "" $ String.take 4 $ show s.a
-        }
-
-  eval (OnKeyDown kbEvent n) = n <$ do
-    pure unit
+    H.modify_ $ \s -> s
+      { mode = nextMode s.mode
+      , hex = Util.toHexString $ stateToColor s
+      , alpha = formatAlpha s.a
+      }
 
   eval (OnColorChangeByKeyDown source kbEvent n) = n <$ do
     when (Array.elem (KeyboardEvent.key kbEvent) ["ArrowUp", "ArrowDown"]) $
@@ -502,7 +503,7 @@ component = H.component
           InputR -> Color.rgba (r + 1) g b a
           InputG -> Color.rgba r (g + 1) b a
           InputB -> Color.rgba r g (b + 1) a
-          InputAlpha -> stateColor
+          InputAlpha -> Color.hsla h s l (increaseOnePercent a)
           InputHex -> stateColor
         "ArrowDown" -> Just $ case source of
           InputH -> Color.hsla (h - 1.0) s l a
@@ -511,10 +512,14 @@ component = H.component
           InputR -> Color.rgba (r - 1) g b a
           InputG -> Color.rgba r (g - 1) b a
           InputB -> Color.rgba r g (b - 1) a
-          InputAlpha -> stateColor
+          InputAlpha -> Color.hsla h s l (decreaseOnePercent a)
           InputHex -> stateColor
         _ -> Nothing
-    for_ mColor handleColorChange
+    for_ mColor \color -> do
+      let { a: newA } = Color.toHSLA color
+      when (newA /= a) $
+        H.modify_ $ _ { alpha = formatAlpha newA }
+      handleColorChange color
 
   eval (OnColorChangeByInput source value n) = n <$ do
     state <- H.get
