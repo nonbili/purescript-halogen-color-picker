@@ -23,7 +23,6 @@ import Effect.Aff.AVar (AVar)
 import Effect.Aff.AVar as AVar
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
-import Halogen.ColorPicker.TextInput as TextInput
 import Halogen.ColorPicker.Util as Util
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
@@ -55,7 +54,6 @@ data Query a
   | OnKeyDown KeyboardEvent a
   | OnColorChangeByKeyDown InputSource KeyboardEvent a
   | OnColorChangeByInput InputSource String a
-  | OnAlphaInputChange String a
 
 data Mode
   = ModeHex
@@ -81,6 +79,7 @@ data InputSource
   | InputR
   | InputG
   | InputB
+  | InputAlpha
   | InputHex
 
 type State =
@@ -261,10 +260,10 @@ renderRGBAMode state =
     , renderTextInput InputB
       [ HP.value $ show b
       ]
-    , TextInput.render
+    , renderTextInput InputAlpha
       [ HP.value state.alpha
       , HP.attr (HH.AttrName "maxlength") "4"
-      ] OnAlphaInputChange
+      ]
     ]
   , HH.div
     [ style modeLabelStyle ]
@@ -293,10 +292,10 @@ renderHSLAMode state =
     , renderTextInput InputL
       [ HP.value $ show $ Int.round $ 100.0 * l
       ]
-    , TextInput.render
+    , renderTextInput InputAlpha
       [ HP.value state.alpha
       , HP.attr (HH.AttrName "maxlength") "4"
-      ] OnAlphaInputChange
+      ]
     ]
   , HH.div
     [ style modeLabelStyle ]
@@ -503,6 +502,7 @@ component = H.component
           InputR -> Color.rgba (r + 1) g b a
           InputG -> Color.rgba r (g + 1) b a
           InputB -> Color.rgba r g (b + 1) a
+          InputAlpha -> stateColor
           InputHex -> stateColor
         "ArrowDown" -> Just $ case source of
           InputH -> Color.hsla (h - 1.0) s l a
@@ -511,6 +511,7 @@ component = H.component
           InputR -> Color.rgba (r - 1) g b a
           InputG -> Color.rgba r (g - 1) b a
           InputB -> Color.rgba r g (b - 1) a
+          InputAlpha -> stateColor
           InputHex -> stateColor
         _ -> Nothing
     for_ mColor handleColorChange
@@ -528,12 +529,6 @@ component = H.component
         InputR -> Color.rgba (fromMaybe r $ Int.fromString value) g b a
         InputG -> Color.rgba r (fromMaybe g $ Int.fromString value) b a
         InputB -> Color.rgba r g (fromMaybe b $ Int.fromString value) a
+        InputAlpha -> Color.hsla h s l (fromMaybe a $ Number.fromString value)
         InputHex -> fromMaybe stateColor $ Util.fromHexString value
     handleColorChange color
-
-  eval (OnAlphaInputChange alpha n) = n <$ do
-    H.modify_ $ \s -> s
-      { a = max 0.0 $ min 1.0 $ fromMaybe s.a $ Number.fromString alpha
-      , alpha = alpha
-      }
-    raise
