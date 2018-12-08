@@ -8,6 +8,8 @@ module Halogen.ColorPicker
 import Prelude
 
 import Color as Color
+import DOM.HTML.Indexed (HTMLinput)
+import Data.Array as Array
 import Data.Foldable (for_, traverse_)
 import Data.Int as Int
 import Data.Maybe (Maybe(..), fromMaybe)
@@ -33,6 +35,8 @@ import Web.HTML as Web
 import Web.HTML.HTMLDocument as HTMLDocument
 import Web.HTML.HTMLElement as HTMLElement
 import Web.HTML.Window as Window
+import Web.UIEvent.KeyboardEvent (KeyboardEvent)
+import Web.UIEvent.KeyboardEvent as KeyboardEvent
 import Web.UIEvent.MouseEvent (MouseEvent)
 import Web.UIEvent.MouseEvent as MouseEvent
 import Web.UIEvent.MouseEvent.EventTypes as ET
@@ -48,8 +52,10 @@ data Query a
   | OnDocumentMouseUp MouseEvent a
   | OnMouseDownPicker Picker MouseEvent a
   | OnToggleMode a
-  | OnHexChange String a
-  | OnColorChange Color.Color a
+  | OnKeyDown KeyboardEvent a
+  | OnColorChangeByKeyDown InputSource KeyboardEvent a
+  | OnColorChangeByInput InputSource String a
+  | OnHexInputChange String a
   | OnAlphaInputChange String a
 
 data Mode
@@ -68,6 +74,14 @@ data Picker
   = PickerSaturationLightness
   | PickerHue
   | PickerAlpha
+
+data InputSource
+  = InputH
+  | InputS
+  | InputL
+  | InputR
+  | InputG
+  | InputB
 
 type State =
   { props :: Props
@@ -120,6 +134,12 @@ initialState props = deriveStateFromProps props
 
 percentage :: Number -> String
 percentage v = show (v * 100.0) <> "%"
+
+increaseOnePercent :: Number -> Number
+increaseOnePercent v = (v * 100.0 + 1.0) / 100.0
+
+decreaseOnePercent :: Number -> Number
+decreaseOnePercent v = (v * 100.0 - 1.0) / 100.0
 
 stateToColor :: State -> Color.Color
 stateToColor { h, s, v, a } =
@@ -201,13 +221,26 @@ modeLabelStyle :: String
 modeLabelStyle =
   "display: flex; justify-content: space-around; margin-top: 0.25rem; font-size: 0.75rem; color: #999;"
 
+renderTextInput
+  :: forall m
+   . InputSource
+  -> Array (HP.IProp HTMLinput (Query Unit))
+  -> HTML m
+renderTextInput source props =
+  HH.input $ props <>
+  [ HP.attr (HH.AttrName "style") "width: 100%; min-width: 0; text-align: center;"
+  , HP.type_ HP.InputText
+  , HE.onKeyDown $ HE.input $ OnColorChangeByKeyDown source
+  , HE.onValueInput $ HE.input $ OnColorChangeByInput source
+  ]
+
 renderHexMode :: forall m. State -> HTML m
 renderHexMode state =
   HH.div
   [ style "flex: 1" ]
   [ TextInput.render
     [ HP.value state.hex
-    ] OnHexChange
+    ] OnHexInputChange
   , HH.div
     [ style modeLabelStyle]
     [ HH.text "HEX"]
@@ -219,15 +252,15 @@ renderRGBAMode state =
   [ style "min-width: 0"]
   [ HH.div
     [ style "display: flex; min-width: 0"]
-    [ TextInput.render
+    [ renderTextInput InputR
       [ HP.value $ show r
-      ] (\v -> OnColorChange $ (Color.rgba (fromMaybe r $ Int.fromString v) g b a))
-    , TextInput.render
+      ]
+    , renderTextInput InputG
       [ HP.value $ show g
-      ] (\v -> OnColorChange $ (Color.rgba r (fromMaybe g $ Int.fromString v) b a))
-    , TextInput.render
+      ]
+    , renderTextInput InputB
       [ HP.value $ show b
-      ] (\v -> OnColorChange $ (Color.rgba r g (fromMaybe b $ Int.fromString v) a))
+      ]
     , TextInput.render
       [ HP.value state.alpha
       , HP.attr (HH.AttrName "maxlength") "4"
@@ -251,15 +284,15 @@ renderHSLAMode state =
   [ style "min-width: 0"]
   [ HH.div
     [ style "display: flex;"]
-    [ TextInput.render
+    [ renderTextInput InputH
       [ HP.value $ show $ Int.round h
-      ] (\v -> OnColorChange $ (Color.hsla (fromMaybe h $ Number.fromString v) s l a))
-    , TextInput.render
+      ]
+    , renderTextInput InputS
       [ HP.value $ show $ Int.round $ 100.0 * s
-      ] (\v -> OnColorChange $ (Color.hsla h (fromMaybe s $ Number.fromString v) l a))
-    , TextInput.render
+      ]
+    , renderTextInput InputL
       [ HP.value $ show $ Int.round $ 100.0 * l
-      ] (\v -> OnColorChange $ (Color.hsla h s (fromMaybe l $ Number.fromString v) a))
+      ]
     , TextInput.render
       [ HP.value state.alpha
       , HP.attr (HH.AttrName "maxlength") "4"
@@ -383,6 +416,12 @@ component = H.component
     propagateHexChange
     raise
 
+  handleColorChange :: Color.Color -> DSL m Unit
+  handleColorChange color = do
+    let { h, s, v, a } = Color.toHSVA color
+    H.modify_ $ _ { h = h, s = s, v = v }
+    raise
+
   eval :: Query ~> DSL m
   eval (Init n) = n <$ do
     doc <- H.liftEffect $ Web.window >>= Window.document
@@ -401,8 +440,9 @@ component = H.component
       H.put $ deriveStateFromProps props state
 
   eval (OnDocumentMouseMove mouseEvent n) = n <$ do
-    state <- H.modify $ _ { mouseEvent = Just mouseEvent }
+    state <- H.get
     for_ state.activeMouseDownPicker \picker -> do
+      H.modify_ $ _ { mouseEvent = Just mouseEvent }
       case state.throttler of
         Nothing -> do
           var <- H.liftAff AVar.empty
@@ -444,18 +484,57 @@ component = H.component
         , alpha = Regex.replace re "" $ String.take 4 $ show s.a
         }
 
-  eval (OnHexChange hex n) = n <$ do
+  eval (OnKeyDown kbEvent n) = n <$ do
+    pure unit
+
+  eval (OnColorChangeByKeyDown source kbEvent n) = n <$ do
+    when (Array.elem (KeyboardEvent.key kbEvent) ["ArrowUp", "ArrowDown"]) $
+      H.liftEffect $ Event.preventDefault $ KeyboardEvent.toEvent kbEvent
+    state <- H.get
+    let
+      stateColor = Color.hsva state.h state.s state.v state.a
+      { h, s, l, a } = Color.toHSLA stateColor
+      { r, g, b } = Color.toRGBA stateColor
+      mColor = case KeyboardEvent.key kbEvent of
+        "ArrowUp" -> Just $ case source of
+          InputH -> Color.hsla (h + 1.0) s l a
+          InputS -> Color.hsla h (increaseOnePercent s) l a
+          InputL -> Color.hsla h s (increaseOnePercent l) a
+          InputR -> Color.rgba (r + 1) g b a
+          InputG -> Color.rgba r (g + 1) b a
+          InputB -> Color.rgba r g (b + 1) a
+        "ArrowDown" -> Just $ case source of
+          InputH -> Color.hsla (h - 1.0) s l a
+          InputS -> Color.hsla h (decreaseOnePercent s) l a
+          InputL -> Color.hsla h s (decreaseOnePercent l) a
+          InputR -> Color.rgba (r - 1) g b a
+          InputG -> Color.rgba r (g - 1) b a
+          InputB -> Color.rgba r g (b - 1) a
+        _ -> Nothing
+    for_ mColor handleColorChange
+
+  eval (OnColorChangeByInput source value n) = n <$ do
+    state <- H.get
+    let
+      stateColor = Color.hsva state.h state.s state.v state.a
+      { h, s, l, a } = Color.toHSLA stateColor
+      { r, g, b } = Color.toRGBA stateColor
+      color = case source of
+        InputH -> Color.hsla (fromMaybe h $ Number.fromString value) s l a
+        InputS -> Color.hsla h (fromMaybe s $ (_ / 100.0) <$> Number.fromString value) l a
+        InputL -> Color.hsla h s (fromMaybe l $ (_ / 100.0) <$> Number.fromString value) a
+        InputR -> Color.rgba (fromMaybe r $ Int.fromString value) g b a
+        InputG -> Color.rgba r (fromMaybe g $ Int.fromString value) b a
+        InputB -> Color.rgba r g (fromMaybe b $ Int.fromString value) a
+    handleColorChange color
+
+  eval (OnHexInputChange hex n) = n <$ do
     H.modify_ $ _ { hex = hex }
     for_ (Util.fromHexString hex) \color -> do
       let
         { h, s, v, a } = Color.toHSVA color
       H.modify_ $ _ { h = h, s = s, v = v, a = a }
       raise
-
-  eval (OnColorChange color n) = n <$ do
-    let { h, s, v, a } = Color.toHSVA color
-    H.modify_ $ _ { h = h, s = s, v = v }
-    raise
 
   eval (OnAlphaInputChange alpha n) = n <$ do
     H.modify_ $ \s -> s
