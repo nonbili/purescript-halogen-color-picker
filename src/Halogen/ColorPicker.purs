@@ -55,7 +55,6 @@ data Query a
   | OnKeyDown KeyboardEvent a
   | OnColorChangeByKeyDown InputSource KeyboardEvent a
   | OnColorChangeByInput InputSource String a
-  | OnHexInputChange String a
   | OnAlphaInputChange String a
 
 data Mode
@@ -82,6 +81,7 @@ data InputSource
   | InputR
   | InputG
   | InputB
+  | InputHex
 
 type State =
   { props :: Props
@@ -238,9 +238,9 @@ renderHexMode :: forall m. State -> HTML m
 renderHexMode state =
   HH.div
   [ style "flex: 1" ]
-  [ TextInput.render
+  [ renderTextInput InputHex
     [ HP.value state.hex
-    ] OnHexInputChange
+    ]
   , HH.div
     [ style modeLabelStyle]
     [ HH.text "HEX"]
@@ -419,7 +419,7 @@ component = H.component
   handleColorChange :: Color.Color -> DSL m Unit
   handleColorChange color = do
     let { h, s, v, a } = Color.toHSVA color
-    H.modify_ $ _ { h = h, s = s, v = v }
+    H.modify_ $ _ { h = h, s = s, v = v, a = a }
     raise
 
   eval :: Query ~> DSL m
@@ -503,6 +503,7 @@ component = H.component
           InputR -> Color.rgba (r + 1) g b a
           InputG -> Color.rgba r (g + 1) b a
           InputB -> Color.rgba r g (b + 1) a
+          InputHex -> stateColor
         "ArrowDown" -> Just $ case source of
           InputH -> Color.hsla (h - 1.0) s l a
           InputS -> Color.hsla h (decreaseOnePercent s) l a
@@ -510,6 +511,7 @@ component = H.component
           InputR -> Color.rgba (r - 1) g b a
           InputG -> Color.rgba r (g - 1) b a
           InputB -> Color.rgba r g (b - 1) a
+          InputHex -> stateColor
         _ -> Nothing
     for_ mColor handleColorChange
 
@@ -526,15 +528,8 @@ component = H.component
         InputR -> Color.rgba (fromMaybe r $ Int.fromString value) g b a
         InputG -> Color.rgba r (fromMaybe g $ Int.fromString value) b a
         InputB -> Color.rgba r g (fromMaybe b $ Int.fromString value) a
+        InputHex -> fromMaybe stateColor $ Util.fromHexString value
     handleColorChange color
-
-  eval (OnHexInputChange hex n) = n <$ do
-    H.modify_ $ _ { hex = hex }
-    for_ (Util.fromHexString hex) \color -> do
-      let
-        { h, s, v, a } = Color.toHSVA color
-      H.modify_ $ _ { h = h, s = s, v = v, a = a }
-      raise
 
   eval (OnAlphaInputChange alpha n) = n <$ do
     H.modify_ $ \s -> s
