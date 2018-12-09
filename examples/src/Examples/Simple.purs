@@ -23,15 +23,21 @@ type Slot = (picker :: H.Slot CP.Query CP.Message Unit)
 
 _picker = SProxy :: SProxy "picker"
 
+style :: forall r i. String -> HP.IProp ("style" :: String | r) i
+style = HP.attr (HH.AttrName "style")
+
 render :: forall m. MonadAff m => State -> H.ComponentHTML Query Slot m
 render state =
   HH.div_
   [ HH.h1_
     [ HH.text "Simple color picker" ]
   , HH.div_
-    [ HH.slot _picker unit CP.component state.color (HE.input HandleColorPicker) ]
+    [ HH.div
+      [ style "display: inline-block; overflow: hidden; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.12), 0 2px 4px 0 rgba(0,0,0,0.08)"]
+      [ HH.slot _picker unit CP.component state.color (HE.input HandleColorPicker) ]
+    ]
   , HH.div
-    [ HP.attr (HH.AttrName "style") "margin-top: 2rem;" ]
+    [ style "margin-top: 2rem;" ]
     [ HH.text $ "Current color is: " <> show state.color ]
   ]
 

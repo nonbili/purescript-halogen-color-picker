@@ -322,32 +322,35 @@ render state =
   [ style "width: 20rem;"]
   [ renderSaturationLightnessPicker state
   , HH.div
-    [ style "margin: 1rem 0; display: flex; align-items: center;"]
+    [ style "padding: 1rem;"]
     [ HH.div
-      [ style $ "position: relative; width: 2.25rem; height: 2.25rem; border-radius: 100%; background-size: 0.75rem; background-image: url(" <> chessImage <> ")" ]
+      [ style "margin-bottom: 1rem; display: flex; align-items: center;"]
       [ HH.div
-        [ style $ "position: absolute; width: 100%; height: 100%; border-radius: 100%; background:" <> color ]
-        []
+        [ style $ "position: relative; width: 2.25rem; height: 2.25rem; border-radius: 100%; background-size: 0.75rem; background-image: url(" <> chessImage <> ")" ]
+        [ HH.div
+          [ style $ "position: absolute; width: 100%; height: 100%; border-radius: 100%; background:" <> color ]
+          []
+        ]
+      , HH.div
+        [ style "flex: 1; margin-left: 1rem;"]
+        [ renderHuePicker state
+        , renderAlphaPicker state
+        ]
       ]
     , HH.div
-      [ style "flex: 1; margin-left: 1rem;"]
-      [ renderHuePicker state
-      , renderAlphaPicker state
-      ]
-    ]
-  , HH.div
-    [ style "display: flex; align-items: center;"]
-    [ case state.mode of
-        ModeHex -> renderHexMode state
-        ModeRGBA -> renderRGBAMode state
-        ModeHSLA -> renderHSLAMode state
-    , HH.button
-      [ style "display: flex; padding: 0.25rem 0.375rem; margin-left: 1rem; cursor: pointer;"
-      , HE.onClick $ HE.input_ OnToggleMode
-      ]
-      [ HH.img
-        [ style "width: 8px"
-        , HP.src "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAkCAYAAACTz/ouAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAHNSURBVHgB7Ve7coJAFN0FP4CUasMngI4zltql1DJlviCTLl0mXbpMOv/COhWmS8YH5A+oNOnMByg5l0EGRti9aMaKM+MAsvfchXvYe9YUFdDpdB6bzaa72Ww+uDEmd2C32x1JKSf4XbdarRBJvjhxkjPIcRzbNE0fp1by19YwjOF8Pg90sQaT3MuQE6z9fj+le7p4qSG3kpnbJUPC3W7nBkGwLeNQPkGj0fAU5AR6uqnifnmRoZgXHEZCD7vdblvr9fqNnYDkCLU8CD76kK+Ast61CSDHO5A/i4pAzKBIvrkio6hOUtSTgUTDxWIxO1wbGXJtwTiIoignXyNDrlMMFyRtj/ON1KhRo8alEC/XtDDBJXhYam3xD8CKGsIUDNGrw7QfFFiTs8npOu0HcTYpx+JMgHx8IM8lIFAnwgxuxYnABO9BnjNjRz0ZPTWAS6BXNxDVyJ8wwaNeXugqYEFmaOBXOO0LHl6Xy2WhC1E6OzgMaqMD1Ri80mC1Wrll95XODrZwTKpQkMeKUXEoE5DnJIKiJBk5blUcLPve6/UckKUOG+SU2M3KsQysDQiK/g1r+AOlxF4Vxxvf91m7HPYOh+SLJL9YUj6hmAk37g/mJ8izUZNyPwAAAABJRU5ErkJggg=="
+      [ style "display: flex; align-items: center;"]
+      [ case state.mode of
+          ModeHex -> renderHexMode state
+          ModeRGBA -> renderRGBAMode state
+          ModeHSLA -> renderHSLAMode state
+      , HH.button
+        [ style "display: flex; padding: 0.25rem 0.375rem; margin-left: 1rem; cursor: pointer;"
+        , HE.onClick $ HE.input_ OnToggleMode
+        ]
+        [ HH.img
+          [ style "width: 8px"
+          , HP.src "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAkCAYAAACTz/ouAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAHNSURBVHgB7Ve7coJAFN0FP4CUasMngI4zltql1DJlviCTLl0mXbpMOv/COhWmS8YH5A+oNOnMByg5l0EGRti9aMaKM+MAsvfchXvYe9YUFdDpdB6bzaa72Ww+uDEmd2C32x1JKSf4XbdarRBJvjhxkjPIcRzbNE0fp1by19YwjOF8Pg90sQaT3MuQE6z9fj+le7p4qSG3kpnbJUPC3W7nBkGwLeNQPkGj0fAU5AR6uqnifnmRoZgXHEZCD7vdblvr9fqNnYDkCLU8CD76kK+Ast61CSDHO5A/i4pAzKBIvrkio6hOUtSTgUTDxWIxO1wbGXJtwTiIoignXyNDrlMMFyRtj/ON1KhRo8alEC/XtDDBJXhYam3xD8CKGsIUDNGrw7QfFFiTs8npOu0HcTYpx+JMgHx8IM8lIFAnwgxuxYnABO9BnjNjRz0ZPTWAS6BXNxDVyJ8wwaNeXugqYEFmaOBXOO0LHl6Xy2WhC1E6OzgMaqMD1Ri80mC1Wrll95XODrZwTKpQkMeKUXEoE5DnJIKiJBk5blUcLPve6/UckKUOG+SU2M3KsQysDQiK/g1r+AOlxF4Vxxvf91m7HPYOh+SLJL9YUj6hmAk37g/mJ8izUZNyPwAAAABJRU5ErkJggg=="
+          ]
         ]
       ]
     ]
