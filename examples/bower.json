@@ -9,13 +9,12 @@
     "bower_components"
   ],
   "dependencies": {
-    "purescript-halogen-storybook": "git@github.com:thomashoneyman/purescript-halogen-storybook.git#master"
+    "purescript-halogen-storybook": "git@github.com:rnons/purescript-halogen-storybook.git#337a6210513bc71c1539c087e39101371bdcdf77",
+    "purescript-colors": "^5.0.0",
+    "purescript-numbers": "^6.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0",
     "purescript-debug": "^4.0.0"
-  },
-  "resolutions": {
-    "purescript-halogen": "e43096ccde699f68f1803acd23bab493a7190e2c"
   }
 }

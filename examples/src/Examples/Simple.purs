@@ -3,17 +3,19 @@ module Examples.Simple where
 import Prelude
 
 import Color as Color
+import Data.Const (Const)
 import Data.Maybe (Maybe(..))
 import Data.Symbol (SProxy(..))
 import Effect.Aff.Class (class MonadAff)
 import Halogen as H
 import Halogen.ColorPicker as CP
 import Halogen.HTML as HH
-import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
 
-data Query a
-  = HandleColorPicker CP.Message a
+type Query = Const Void
+
+data Action
+  = HandleColorPicker CP.Message
 
 type State =
   { color :: Color.Color
@@ -26,7 +28,7 @@ _picker = SProxy :: SProxy "picker"
 style :: forall r i. String -> HP.IProp ("style" :: String | r) i
 style = HP.attr (HH.AttrName "style")
 
-render :: forall m. MonadAff m => State -> H.ComponentHTML Query Slot m
+render :: forall m. MonadAff m => State -> H.ComponentHTML Action Slot m
 render state =
   HH.div_
   [ HH.h1_
@@ -34,7 +36,7 @@ render state =
   , HH.div_
     [ HH.div
       [ style "display: inline-block; overflow: hidden; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.12), 0 2px 4px 0 rgba(0,0,0,0.08)"]
-      [ HH.slot _picker unit CP.component state.color (HE.input HandleColorPicker) ]
+      [ HH.slot _picker unit CP.component state.color $ Just <<< HandleColorPicker ]
     ]
   , HH.div
     [ style "margin-top: 2rem;" ]
@@ -47,16 +49,16 @@ initialState =
   }
 
 component :: forall m. MonadAff m => H.Component HH.HTML Query Unit Void m
-component = H.component
+component = H.mkComponent
   { initialState: const initialState
   , render
-  , eval
-  , receiver: const Nothing
-  , initializer: Nothing
-  , finalizer: Nothing
+  , eval: H.mkEval $ H.defaultEval
+      { handleAction = handleAction }
   }
-  where
 
-  eval :: Query ~> H.HalogenM State Query Slot Void m
-  eval (HandleColorPicker color n) = n <$ do
-    H.modify_ $ _ { color = color }
+handleAction
+  :: forall m
+   . Action
+  -> H.HalogenM State Action Slot Void m Unit
+handleAction (HandleColorPicker color) = do
+  H.modify_ $ _ { color = color }

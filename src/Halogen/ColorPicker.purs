@@ -10,6 +10,7 @@ import Prelude
 import Color as Color
 import DOM.HTML.Indexed (HTMLinput)
 import Data.Array as Array
+import Data.Const (Const)
 import Data.Either (Either(..))
 import Data.Foldable (for_, traverse_)
 import Data.Int as Int
@@ -45,15 +46,17 @@ type Props = Color.Color
 
 type Message = Color.Color
 
-data Query a
-  = Init a
-  | OnReceiveProps Props a
-  | OnDocumentMouseMove MouseEvent a
-  | OnDocumentMouseUp MouseEvent a
-  | OnMouseDownPicker Picker MouseEvent a
-  | OnToggleMode a
-  | OnColorChangeByKeyDown InputSource KeyboardEvent a
-  | OnColorChangeByInput InputSource String a
+type Query = Const Void
+
+data Action
+  = Init
+  | OnReceiveProps Props
+  | OnDocumentMouseMove MouseEvent
+  | OnDocumentMouseUp MouseEvent
+  | OnMouseDownPicker Picker MouseEvent
+  | OnToggleMode
+  | OnColorChangeByKeyDown InputSource KeyboardEvent
+  | OnColorChangeByInput InputSource String
 
 data Mode
   = ModeHex
@@ -96,9 +99,9 @@ type State =
   , mouseEvent :: Maybe MouseEvent
   }
 
-type HTML m = H.ComponentHTML Query () m
+type HTML m = H.ComponentHTML Action () m
 
-type DSL m = H.HalogenM State Query () Message m
+type DSL m = H.HalogenM State Action () Message m
 
 style :: forall r i. String -> HP.IProp ("style" :: String | r) i
 style = HP.attr (HH.AttrName "style")
@@ -160,7 +163,7 @@ renderSaturationLightnessPicker state =
   HH.div
   [ style "position: relative; width: 320px; height: 200px;"
   , HP.ref saturationRef
-  , HE.onMouseDown $ HE.input $ OnMouseDownPicker PickerSaturationLightness
+  , HE.onMouseDown $ Just <<< OnMouseDownPicker PickerSaturationLightness
   ]
   [ HH.div
     [ style $ absolute <> hueBackground ]
@@ -191,7 +194,7 @@ renderHuePicker state =
   HH.div
   [ style "position: relative; height: 0.75rem; background: linear-gradient(to right, #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%); border-radius: 2px;"
   , HP.ref hueRef
-  , HE.onMouseDown $ HE.input $ OnMouseDownPicker PickerHue
+  , HE.onMouseDown $ Just <<< OnMouseDownPicker PickerHue
   ]
   [ HH.div
     [ style $ "position: absolute; top: -0.125rem; height: 1rem; width: 1rem; transform: translateX(-0.5rem); background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage (state.h / 360.0) ]
@@ -206,7 +209,7 @@ renderAlphaPicker state =
   HH.div
   [ style $ "margin-top: 0.5rem; position: relative; height: 0.75rem; border-radius: 2px; background-size: 0.75rem; background-image: url(" <> chessImage <> ")"
   , HP.ref alphaRef
-  , HE.onMouseDown $ HE.input $ OnMouseDownPicker PickerAlpha
+  , HE.onMouseDown $ Just <<< OnMouseDownPicker PickerAlpha
   ]
   [ HH.div
     [ style $ "position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 2px; background: " <> bg
@@ -228,14 +231,14 @@ modeLabelStyle =
 renderTextInput
   :: forall m
    . InputSource
-  -> Array (HP.IProp HTMLinput (Query Unit))
+  -> Array (HP.IProp HTMLinput Action)
   -> HTML m
 renderTextInput source props =
   HH.input $ props <>
   [ HP.attr (HH.AttrName "style") "width: 100%; min-width: 0; text-align: center;"
   , HP.type_ HP.InputText
-  , HE.onKeyDown $ HE.input $ OnColorChangeByKeyDown source
-  , HE.onValueInput $ HE.input $ OnColorChangeByInput source
+  , HE.onKeyDown $ Just <<< OnColorChangeByKeyDown source
+  , HE.onValueInput $ Just <<< OnColorChangeByInput source
   ]
 
 renderHexMode :: forall m. State -> HTML m
@@ -345,7 +348,7 @@ render state =
           ModeHSLA -> renderHSLAMode state
       , HH.button
         [ style "display: flex; padding: 0.25rem 0.375rem; margin-left: 1rem; cursor: pointer;"
-        , HE.onClick $ HE.input_ OnToggleMode
+        , HE.onClick $ Just <<< const OnToggleMode
         ]
         [ HH.img
           [ style "width: 8px"
@@ -359,184 +362,198 @@ render state =
   color = Util.toHexString $ stateToColor state
 
 component :: forall m. MonadAff m => H.Component HH.HTML Query Props Message m
-component = H.component
+component = H.mkComponent
   { initialState
   , render
-  , eval
-  , receiver: HE.input OnReceiveProps
-  , initializer: Just $ H.action Init
-  , finalizer: Nothing
+  , eval: H.mkEval $ H.defaultEval
+      { initialize = Just Init
+      , receive = Just <<< OnReceiveProps
+      , handleAction = handleAction
+      }
   }
-  where
-  raise :: DSL m Unit
-  raise = do
-    H.get >>= H.raise <<< stateToColor
 
-  propagateHexChange :: DSL m Unit
-  propagateHexChange = do
-    state <- H.get
-    when (state.mode == ModeHex) $
-      H.modify_ $ \s -> s
-        { hex = Util.toHexString $ stateToColor s
-        }
+raise :: forall m. DSL m Unit
+raise = do
+  H.get >>= H.raise <<< stateToColor
 
-  handleSaturationLightnessOnMouseEvent :: MouseEvent -> DSL m Unit
-  handleSaturationLightnessOnMouseEvent mouseEvent = do
-    H.getHTMLElementRef saturationRef >>= traverse_ \el -> do
-      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
-      let
-        saturation = (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
-        value = (rect.height - Int.toNumber (MouseEvent.pageY mouseEvent) + rect.top) / rect.height
-        s = max 0.0 $ min 1.0 saturation
-        v = max 0.0 $ min 1.0 value
-      state <- H.get
-      when (state.s /= s && state.v /= v) $ do
-        H.modify_ $ _
-          { s = s
-          , v = v
-          }
-        propagateHexChange
-        raise
-
-  handleHueOnMouseEvent :: MouseEvent -> DSL m Unit
-  handleHueOnMouseEvent mouseEvent = do
-    H.getHTMLElementRef hueRef >>= traverse_ \el -> do
-      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
-      let
-        hue = 360.0 * (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
-      H.modify_ $ _
-        { h = max 0.0 $ min 360.0 hue
-        }
-    propagateHexChange
-    raise
-
-  handleAlphaOnMouseEvent :: MouseEvent -> DSL m Unit
-  handleAlphaOnMouseEvent mouseEvent = do
-    H.getHTMLElementRef hueRef >>= traverse_ \el -> do
-      rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
-      let
-        a = max 0.0 $ min 1.0 $ (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
-      H.modify_ $ _
-        { a = a
-        , alpha = formatAlpha a
-        }
-    propagateHexChange
-    raise
-
-  handleColorChange :: Color.Color -> DSL m Unit
-  handleColorChange color = do
-    let { h, s, v, a } = Color.toHSVA color
-    H.modify_ $ _ { h = h, s = s, v = v, a = a }
-    raise
-
-  eval :: Query ~> DSL m
-  eval (Init n) = n <$ do
-    doc <- H.liftEffect $ Web.window >>= Window.document
-    let docTarget = Document.toEventTarget $ HTMLDocument.toDocument doc
-    void $ H.subscribe $
-      ES.eventListenerEventSource ET.mousemove docTarget
-        (map (H.action <<< OnDocumentMouseMove) <<< MouseEvent.fromEvent)
-    H.subscribe $
-      ES.eventListenerEventSource ET.mouseup docTarget
-        (map (H.action <<< OnDocumentMouseUp) <<< MouseEvent.fromEvent)
-
-
-  eval (OnReceiveProps props n) = n <$ do
-    state <- H.get
-    when (stateToColor state /= props) $
-      H.put $ deriveStateFromProps props state
-
-  eval (OnDocumentMouseMove mouseEvent n) = n <$ do
-    state <- H.get
-    for_ state.activeMouseDownPicker \picker -> do
-      H.modify_ $ _ { mouseEvent = Just mouseEvent }
-      case state.throttler of
-        Nothing -> do
-          var <- H.liftAff AVar.empty
-          void $ H.liftAff $ Aff.forkAff do
-            Aff.delay $ Milliseconds 100.0
-            AVar.put unit var
-
-          void $ H.fork do
-            H.liftAff $ AVar.take var
-            state' <- H.modify $ _ { throttler = Nothing }
-            for_ state'.mouseEvent \event ->
-              case picker of
-                PickerSaturationLightness ->
-                  handleSaturationLightnessOnMouseEvent event
-                PickerHue -> handleHueOnMouseEvent event
-                PickerAlpha -> handleAlphaOnMouseEvent event
-
-          H.modify_ $ _ { throttler = Just var }
-        Just _ -> pure unit
-
-  eval (OnDocumentMouseUp mouseEvent n) = n <$ do
-    H.modify_ $ _ { activeMouseDownPicker = Nothing }
-
-  eval (OnMouseDownPicker picker mouseEvent n) = n <$ do
-    -- Without preventDefault, sometimes mouseup is not fired up.
-    H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
-    H.modify_ $ _ { activeMouseDownPicker = Just picker }
-    case picker of
-      PickerSaturationLightness ->
-        handleSaturationLightnessOnMouseEvent mouseEvent
-      PickerHue -> handleHueOnMouseEvent mouseEvent
-      PickerAlpha -> handleAlphaOnMouseEvent mouseEvent
-
-  eval (OnToggleMode n) = n <$ do
+propagateHexChange :: forall m. DSL m Unit
+propagateHexChange = do
+  state <- H.get
+  when (state.mode == ModeHex) $
     H.modify_ $ \s -> s
-      { mode = nextMode s.mode
-      , hex = Util.toHexString $ stateToColor s
-      , alpha = formatAlpha s.a
+      { hex = Util.toHexString $ stateToColor s
       }
 
-  eval (OnColorChangeByKeyDown source kbEvent n) = n <$ do
-    when (Array.elem (KeyboardEvent.key kbEvent) ["ArrowUp", "ArrowDown"]) $
-      H.liftEffect $ Event.preventDefault $ KeyboardEvent.toEvent kbEvent
-    state <- H.get
+handleSaturationLightnessOnMouseEvent
+  :: forall m
+   . MonadAff m
+  => MouseEvent -> DSL m Unit
+handleSaturationLightnessOnMouseEvent mouseEvent = do
+  H.getHTMLElementRef saturationRef >>= traverse_ \el -> do
+    rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
     let
-      stateColor = Color.hsva state.h state.s state.v state.a
-      { h, s, l, a } = Color.toHSLA stateColor
-      { r, g, b } = Color.toRGBA stateColor
-      mColor = case KeyboardEvent.key kbEvent of
-        "ArrowUp" -> Just $ case source of
-          InputH -> Color.hsla (h + 1.0) s l a
-          InputS -> Color.hsla h (increaseOnePercent s) l a
-          InputL -> Color.hsla h s (increaseOnePercent l) a
-          InputR -> Color.rgba (r + 1) g b a
-          InputG -> Color.rgba r (g + 1) b a
-          InputB -> Color.rgba r g (b + 1) a
-          InputAlpha -> Color.hsla h s l (increaseOnePercent a)
-          InputHex -> stateColor
-        "ArrowDown" -> Just $ case source of
-          InputH -> Color.hsla (h - 1.0) s l a
-          InputS -> Color.hsla h (decreaseOnePercent s) l a
-          InputL -> Color.hsla h s (decreaseOnePercent l) a
-          InputR -> Color.rgba (r - 1) g b a
-          InputG -> Color.rgba r (g - 1) b a
-          InputB -> Color.rgba r g (b - 1) a
-          InputAlpha -> Color.hsla h s l (decreaseOnePercent a)
-          InputHex -> stateColor
-        _ -> Nothing
-    for_ mColor \color -> do
-      let { a: newA } = Color.toHSLA color
-      when (newA /= a) $
-        H.modify_ $ _ { alpha = formatAlpha newA }
-      handleColorChange color
+      saturation = (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
+      value = (rect.height - Int.toNumber (MouseEvent.pageY mouseEvent) + rect.top) / rect.height
+      s = max 0.0 $ min 1.0 saturation
+      v = max 0.0 $ min 1.0 value
+    state <- H.get
+    when (state.s /= s && state.v /= v) $ do
+      H.modify_ $ _
+        { s = s
+        , v = v
+        }
+      propagateHexChange
+      raise
 
-  eval (OnColorChangeByInput source value n) = n <$ do
-    state <- H.get
+handleHueOnMouseEvent
+  :: forall m
+   . MonadAff m
+  => MouseEvent -> DSL m Unit
+handleHueOnMouseEvent mouseEvent = do
+  H.getHTMLElementRef hueRef >>= traverse_ \el -> do
+    rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
     let
-      stateColor = Color.hsva state.h state.s state.v state.a
-      { h, s, l, a } = Color.toHSLA stateColor
-      { r, g, b } = Color.toRGBA stateColor
-      color = case source of
-        InputH -> Color.hsla (fromMaybe h $ Number.fromString value) s l a
-        InputS -> Color.hsla h (fromMaybe s $ (_ / 100.0) <$> Number.fromString value) l a
-        InputL -> Color.hsla h s (fromMaybe l $ (_ / 100.0) <$> Number.fromString value) a
-        InputR -> Color.rgba (fromMaybe r $ Int.fromString value) g b a
-        InputG -> Color.rgba r (fromMaybe g $ Int.fromString value) b a
-        InputB -> Color.rgba r g (fromMaybe b $ Int.fromString value) a
-        InputAlpha -> Color.hsla h s l (fromMaybe a $ Number.fromString value)
-        InputHex -> fromMaybe stateColor $ Util.fromHexString value
+      hue = 360.0 * (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
+    H.modify_ $ _
+      { h = max 0.0 $ min 360.0 hue
+      }
+  propagateHexChange
+  raise
+
+handleAlphaOnMouseEvent
+  :: forall m
+   . MonadAff m
+  => MouseEvent -> DSL m Unit
+handleAlphaOnMouseEvent mouseEvent = do
+  H.getHTMLElementRef hueRef >>= traverse_ \el -> do
+    rect <- H.liftEffect $ HTMLElement.getBoundingClientRect el
+    let
+      a = max 0.0 $ min 1.0 $ (Int.toNumber (MouseEvent.pageX mouseEvent) - rect.left) / rect.width
+    H.modify_ $ _
+      { a = a
+      , alpha = formatAlpha a
+      }
+  propagateHexChange
+  raise
+
+handleColorChange :: forall m. Color.Color -> DSL m Unit
+handleColorChange color = do
+  let { h, s, v, a } = Color.toHSVA color
+  H.modify_ $ _ { h = h, s = s, v = v, a = a }
+  raise
+
+handleAction
+  :: forall m
+   . MonadAff m
+  => Action
+  -> DSL m Unit
+handleAction Init = do
+  doc <- H.liftEffect $ Web.window >>= Window.document
+  let docTarget = Document.toEventTarget $ HTMLDocument.toDocument doc
+  void $ H.subscribe $
+    ES.eventListenerEventSource ET.mousemove docTarget
+      (map OnDocumentMouseMove <<< MouseEvent.fromEvent)
+  void $ H.subscribe $
+    ES.eventListenerEventSource ET.mouseup docTarget
+      (map OnDocumentMouseUp <<< MouseEvent.fromEvent)
+
+
+handleAction (OnReceiveProps props) = do
+  state <- H.get
+  when (stateToColor state /= props) $
+    H.put $ deriveStateFromProps props state
+
+handleAction (OnDocumentMouseMove mouseEvent) = do
+  state <- H.get
+  for_ state.activeMouseDownPicker \picker -> do
+    H.modify_ $ _ { mouseEvent = Just mouseEvent }
+    case state.throttler of
+      Nothing -> do
+        var <- H.liftAff AVar.empty
+        void $ H.liftAff $ Aff.forkAff do
+          Aff.delay $ Milliseconds 100.0
+          AVar.put unit var
+
+        void $ H.fork do
+          H.liftAff $ AVar.take var
+          state' <- H.modify $ _ { throttler = Nothing }
+          for_ state'.mouseEvent \event ->
+            case picker of
+              PickerSaturationLightness ->
+                handleSaturationLightnessOnMouseEvent event
+              PickerHue -> handleHueOnMouseEvent event
+              PickerAlpha -> handleAlphaOnMouseEvent event
+
+        H.modify_ $ _ { throttler = Just var }
+      Just _ -> pure unit
+
+handleAction (OnDocumentMouseUp mouseEvent) = do
+  H.modify_ $ _ { activeMouseDownPicker = Nothing }
+
+handleAction (OnMouseDownPicker picker mouseEvent) = do
+  -- Without preventDefault, sometimes mouseup is not fired up.
+  H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
+  H.modify_ $ _ { activeMouseDownPicker = Just picker }
+  case picker of
+    PickerSaturationLightness ->
+      handleSaturationLightnessOnMouseEvent mouseEvent
+    PickerHue -> handleHueOnMouseEvent mouseEvent
+    PickerAlpha -> handleAlphaOnMouseEvent mouseEvent
+
+handleAction (OnToggleMode) = do
+  H.modify_ $ \s -> s
+    { mode = nextMode s.mode
+    , hex = Util.toHexString $ stateToColor s
+    , alpha = formatAlpha s.a
+    }
+
+handleAction (OnColorChangeByKeyDown source kbEvent) = do
+  when (Array.elem (KeyboardEvent.key kbEvent) ["ArrowUp", "ArrowDown"]) $
+    H.liftEffect $ Event.preventDefault $ KeyboardEvent.toEvent kbEvent
+  state <- H.get
+  let
+    stateColor = Color.hsva state.h state.s state.v state.a
+    { h, s, l, a } = Color.toHSLA stateColor
+    { r, g, b } = Color.toRGBA stateColor
+    mColor = case KeyboardEvent.key kbEvent of
+      "ArrowUp" -> Just $ case source of
+        InputH -> Color.hsla (h + 1.0) s l a
+        InputS -> Color.hsla h (increaseOnePercent s) l a
+        InputL -> Color.hsla h s (increaseOnePercent l) a
+        InputR -> Color.rgba (r + 1) g b a
+        InputG -> Color.rgba r (g + 1) b a
+        InputB -> Color.rgba r g (b + 1) a
+        InputAlpha -> Color.hsla h s l (increaseOnePercent a)
+        InputHex -> stateColor
+      "ArrowDown" -> Just $ case source of
+        InputH -> Color.hsla (h - 1.0) s l a
+        InputS -> Color.hsla h (decreaseOnePercent s) l a
+        InputL -> Color.hsla h s (decreaseOnePercent l) a
+        InputR -> Color.rgba (r - 1) g b a
+        InputG -> Color.rgba r (g - 1) b a
+        InputB -> Color.rgba r g (b - 1) a
+        InputAlpha -> Color.hsla h s l (decreaseOnePercent a)
+        InputHex -> stateColor
+      _ -> Nothing
+  for_ mColor \color -> do
+    let { a: newA } = Color.toHSLA color
+    when (newA /= a) $
+      H.modify_ $ _ { alpha = formatAlpha newA }
     handleColorChange color
+
+handleAction (OnColorChangeByInput source value) = do
+  state <- H.get
+  let
+    stateColor = Color.hsva state.h state.s state.v state.a
+    { h, s, l, a } = Color.toHSLA stateColor
+    { r, g, b } = Color.toRGBA stateColor
+    color = case source of
+      InputH -> Color.hsla (fromMaybe h $ Number.fromString value) s l a
+      InputS -> Color.hsla h (fromMaybe s $ (_ / 100.0) <$> Number.fromString value) l a
+      InputL -> Color.hsla h s (fromMaybe l $ (_ / 100.0) <$> Number.fromString value) a
+      InputR -> Color.rgba (fromMaybe r $ Int.fromString value) g b a
+      InputG -> Color.rgba r (fromMaybe g $ Int.fromString value) b a
+      InputB -> Color.rgba r g (fromMaybe b $ Int.fromString value) a
+      InputAlpha -> Color.hsla h s l (fromMaybe a $ Number.fromString value)
+      InputHex -> fromMaybe stateColor $ Util.fromHexString value
+  handleColorChange color
