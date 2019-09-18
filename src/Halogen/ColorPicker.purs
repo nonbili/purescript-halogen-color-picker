@@ -451,119 +451,119 @@ handleAction
    . MonadAff m
   => Action
   -> DSL m Unit
-handleAction Init = do
-  doc <- H.liftEffect $ Web.window >>= Window.document
-  let docTarget = Document.toEventTarget $ HTMLDocument.toDocument doc
-  void $ H.subscribe $
-    ES.eventListenerEventSource ET.mousemove docTarget
-      (map OnDocumentMouseMove <<< MouseEvent.fromEvent)
-  void $ H.subscribe $
-    ES.eventListenerEventSource ET.mouseup docTarget
-      (map OnDocumentMouseUp <<< MouseEvent.fromEvent)
+handleAction = case _ of
+  Init -> do
+    doc <- H.liftEffect $ Web.window >>= Window.document
+    let docTarget = Document.toEventTarget $ HTMLDocument.toDocument doc
+    void $ H.subscribe $
+      ES.eventListenerEventSource ET.mousemove docTarget
+        (map OnDocumentMouseMove <<< MouseEvent.fromEvent)
+    void $ H.subscribe $
+      ES.eventListenerEventSource ET.mouseup docTarget
+        (map OnDocumentMouseUp <<< MouseEvent.fromEvent)
 
+  OnReceiveProps props -> do
+    state <- H.get
+    when (stateToColor state /= props) $
+      H.put $ deriveStateFromProps props state
 
-handleAction (OnReceiveProps props) = do
-  state <- H.get
-  when (stateToColor state /= props) $
-    H.put $ deriveStateFromProps props state
+  OnDocumentMouseMove mouseEvent -> do
+    state <- H.get
+    for_ state.activeMouseDownPicker \picker -> do
+      H.modify_ $ _ { mouseEvent = Just mouseEvent }
+      case state.throttler of
+        Nothing -> do
+          var <- H.liftAff AVar.empty
+          void $ H.liftAff $ Aff.forkAff do
+            Aff.delay $ Milliseconds 100.0
+            AVar.put unit var
 
-handleAction (OnDocumentMouseMove mouseEvent) = do
-  state <- H.get
-  for_ state.activeMouseDownPicker \picker -> do
-    H.modify_ $ _ { mouseEvent = Just mouseEvent }
-    case state.throttler of
-      Nothing -> do
-        var <- H.liftAff AVar.empty
-        void $ H.liftAff $ Aff.forkAff do
-          Aff.delay $ Milliseconds 100.0
-          AVar.put unit var
+          void $ H.fork do
+            H.liftAff $ AVar.take var
+            state' <- H.modify $ _ { throttler = Nothing }
+            for_ state'.mouseEvent \event ->
+              case picker of
+                PickerSaturationLightness ->
+                  handleSaturationLightnessOnMouseEvent event
+                PickerHue -> handleHueOnMouseEvent event
+                PickerAlpha -> handleAlphaOnMouseEvent event
 
-        void $ H.fork do
-          H.liftAff $ AVar.take var
-          state' <- H.modify $ _ { throttler = Nothing }
-          for_ state'.mouseEvent \event ->
-            case picker of
-              PickerSaturationLightness ->
-                handleSaturationLightnessOnMouseEvent event
-              PickerHue -> handleHueOnMouseEvent event
-              PickerAlpha -> handleAlphaOnMouseEvent event
+          H.modify_ $ _ { throttler = Just var }
+        Just _ -> pure unit
 
-        H.modify_ $ _ { throttler = Just var }
-      Just _ -> pure unit
+  OnDocumentMouseUp mouseEvent -> do
+    H.modify_ $ _ { activeMouseDownPicker = Nothing }
 
-handleAction (OnDocumentMouseUp mouseEvent) = do
-  H.modify_ $ _ { activeMouseDownPicker = Nothing }
+  OnMouseDownPicker picker mouseEvent -> do
+    -- Without preventDefault, sometimes mouseup is not fired up.
+    H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
+    H.modify_ $ _ { activeMouseDownPicker = Just picker }
+    case picker of
+      PickerSaturationLightness ->
+        handleSaturationLightnessOnMouseEvent mouseEvent
+      PickerHue -> handleHueOnMouseEvent mouseEvent
+      PickerAlpha -> handleAlphaOnMouseEvent mouseEvent
 
-handleAction (OnMouseDownPicker picker mouseEvent) = do
-  -- Without preventDefault, sometimes mouseup is not fired up.
-  H.liftEffect $ Event.preventDefault $ MouseEvent.toEvent mouseEvent
-  H.modify_ $ _ { activeMouseDownPicker = Just picker }
-  case picker of
-    PickerSaturationLightness ->
-      handleSaturationLightnessOnMouseEvent mouseEvent
-    PickerHue -> handleHueOnMouseEvent mouseEvent
-    PickerAlpha -> handleAlphaOnMouseEvent mouseEvent
+  OnToggleMode -> do
+    H.modify_ $ \s -> s
+      { mode = nextMode s.mode
+      , hex = Util.toHexString $ stateToColor s
+      , alpha = formatAlpha s.a
+      }
 
-handleAction (OnToggleMode) = do
-  H.modify_ $ \s -> s
-    { mode = nextMode s.mode
-    , hex = Util.toHexString $ stateToColor s
-    , alpha = formatAlpha s.a
-    }
+  OnColorChangeByKeyDown source kbEvent -> do
+    when (Array.elem (KeyboardEvent.key kbEvent) ["ArrowUp", "ArrowDown"]) $
+      H.liftEffect $ Event.preventDefault $ KeyboardEvent.toEvent kbEvent
+    state <- H.get
+    let
+      stateColor = Color.hsva state.h state.s state.v state.a
+      { h, s, l, a } = Color.toHSLA stateColor
+      { r, g, b } = Color.toRGBA stateColor
+      mColor = case KeyboardEvent.key kbEvent of
+        "ArrowUp" -> Just $ case source of
+          InputH -> Color.hsla (h + 1.0) s l a
+          InputS -> Color.hsla h (increaseOnePercent s) l a
+          InputL -> Color.hsla h s (increaseOnePercent l) a
+          InputR -> Color.rgba (r + 1) g b a
+          InputG -> Color.rgba r (g + 1) b a
+          InputB -> Color.rgba r g (b + 1) a
+          InputAlpha -> Color.hsla h s l (increaseOnePercent a)
+          InputHex -> stateColor
+        "ArrowDown" -> Just $ case source of
+          InputH -> Color.hsla (h - 1.0) s l a
+          InputS -> Color.hsla h (decreaseOnePercent s) l a
+          InputL -> Color.hsla h s (decreaseOnePercent l) a
+          InputR -> Color.rgba (r - 1) g b a
+          InputG -> Color.rgba r (g - 1) b a
+          InputB -> Color.rgba r g (b - 1) a
+          InputAlpha -> Color.hsla h s l (decreaseOnePercent a)
+          InputHex -> stateColor
+        _ -> Nothing
+    for_ mColor \color -> do
+      let { a: newA } = Color.toHSLA color
+      when (newA /= a) $
+        H.modify_ $ _ { alpha = formatAlpha newA }
+      handleColorChange color
 
-handleAction (OnColorChangeByKeyDown source kbEvent) = do
-  when (Array.elem (KeyboardEvent.key kbEvent) ["ArrowUp", "ArrowDown"]) $
-    H.liftEffect $ Event.preventDefault $ KeyboardEvent.toEvent kbEvent
-  state <- H.get
-  let
-    stateColor = Color.hsva state.h state.s state.v state.a
-    { h, s, l, a } = Color.toHSLA stateColor
-    { r, g, b } = Color.toRGBA stateColor
-    mColor = case KeyboardEvent.key kbEvent of
-      "ArrowUp" -> Just $ case source of
-        InputH -> Color.hsla (h + 1.0) s l a
-        InputS -> Color.hsla h (increaseOnePercent s) l a
-        InputL -> Color.hsla h s (increaseOnePercent l) a
-        InputR -> Color.rgba (r + 1) g b a
-        InputG -> Color.rgba r (g + 1) b a
-        InputB -> Color.rgba r g (b + 1) a
-        InputAlpha -> Color.hsla h s l (increaseOnePercent a)
-        InputHex -> stateColor
-      "ArrowDown" -> Just $ case source of
-        InputH -> Color.hsla (h - 1.0) s l a
-        InputS -> Color.hsla h (decreaseOnePercent s) l a
-        InputL -> Color.hsla h s (decreaseOnePercent l) a
-        InputR -> Color.rgba (r - 1) g b a
-        InputG -> Color.rgba r (g - 1) b a
-        InputB -> Color.rgba r g (b - 1) a
-        InputAlpha -> Color.hsla h s l (decreaseOnePercent a)
-        InputHex -> stateColor
-      _ -> Nothing
-  for_ mColor \color -> do
-    let { a: newA } = Color.toHSLA color
-    when (newA /= a) $
-      H.modify_ $ _ { alpha = formatAlpha newA }
+  OnColorChangeByInput source value -> do
+    state <- H.get
+    let
+      stateColor = Color.hsva state.h state.s state.v state.a
+      { h, s, l, a } = Color.toHSLA stateColor
+      { r, g, b } = Color.toRGBA stateColor
+      color = case source of
+        InputH -> Color.hsla (fromMaybe h $ Number.fromString value) s l a
+        InputS -> Color.hsla h (fromMaybe s $ (_ / 100.0) <$> Number.fromString value) l a
+        InputL -> Color.hsla h s (fromMaybe l $ (_ / 100.0) <$> Number.fromString value) a
+        InputR -> Color.rgba (fromMaybe r $ Int.fromString value) g b a
+        InputG -> Color.rgba r (fromMaybe g $ Int.fromString value) b a
+        InputB -> Color.rgba r g (fromMaybe b $ Int.fromString value) a
+        InputAlpha -> Color.hsla h s l (fromMaybe a $ Number.fromString value)
+        InputHex -> fromMaybe stateColor $ Util.fromHexString value
     handleColorChange color
 
-handleAction (OnColorChangeByInput source value) = do
-  state <- H.get
-  let
-    stateColor = Color.hsva state.h state.s state.v state.a
-    { h, s, l, a } = Color.toHSLA stateColor
-    { r, g, b } = Color.toRGBA stateColor
-    color = case source of
-      InputH -> Color.hsla (fromMaybe h $ Number.fromString value) s l a
-      InputS -> Color.hsla h (fromMaybe s $ (_ / 100.0) <$> Number.fromString value) l a
-      InputL -> Color.hsla h s (fromMaybe l $ (_ / 100.0) <$> Number.fromString value) a
-      InputR -> Color.rgba (fromMaybe r $ Int.fromString value) g b a
-      InputG -> Color.rgba r (fromMaybe g $ Int.fromString value) b a
-      InputB -> Color.rgba r g (fromMaybe b $ Int.fromString value) a
-      InputAlpha -> Color.hsla h s l (fromMaybe a $ Number.fromString value)
-      InputHex -> fromMaybe stateColor $ Util.fromHexString value
-  handleColorChange color
-
-handleAction OnClickCopy = do
-  state <- H.get
-  let
-    stateColor = Color.hsva state.h state.s state.v state.a
-  H.liftEffect $ Util.copyToClipboard $ Util.toHexString stateColor
+  OnClickCopy -> do
+    state <- H.get
+    let
+      stateColor = Color.hsva state.h state.s state.v state.a
+    H.liftEffect $ Util.copyToClipboard $ Util.toHexString stateColor
