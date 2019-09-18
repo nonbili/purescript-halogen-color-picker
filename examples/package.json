@@ -2,7 +2,7 @@
   "private": true,
   "license": "BSD-3-Clause",
   "scripts": {
-    "build": "pulp build -- +RTS -N2 -RTS && parcel -d ../docs index.html",
+    "build": "pulp build -I ../src -- +RTS -N2 -RTS && parcel build --public-url . -d ../docs index.html",
     "postinstall": "bower install",
     "pscid:build": "pulp build",
     "start": "parcel index.html"

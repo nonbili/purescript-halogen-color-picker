@@ -12,26 +12,16 @@ jobs:
           - deps-{{ checksum "bower.json" }}-{{ checksum "examples/bower.json" }}
 
       - run:
+          working_directory: examples
           command: |
             git checkout -b gh-pages
             git reset --hard origin/master
-            yarn add --dev bower
-            yarn bower install
-            yarn bower link
-
-      - run:
-          working_directory: examples
-          command: |
             yarn add --dev bower purescript pulp
-            yarn bower link purescript-halogen-color-picker
-            yarn bower install
             yarn
             yarn build
 
       - save_cache:
           paths:
-            - node_modules
-            - bower_components
             - examples/node_modules
             - examples/bower_components
             - output
