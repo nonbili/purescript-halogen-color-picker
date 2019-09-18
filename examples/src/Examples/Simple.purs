@@ -42,7 +42,7 @@ render state =
         [ HH.slot _picker unit CP.component state.color $ Just <<< HandleColorPicker ]
       ]
     , HH.div
-      [ style "padding: 1.5rem; text-align: center; border-top: 1px solid lightgray;" ]
+      [ style "padding: 1rem; text-align: center; border-top: 1px solid lightgray;" ]
       [ HH.text $ "Current color is: " <> U.toHexString state.color ]
     ]
   ]

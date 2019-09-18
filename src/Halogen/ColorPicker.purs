@@ -57,6 +57,7 @@ data Action
   | OnToggleMode
   | OnColorChangeByKeyDown InputSource KeyboardEvent
   | OnColorChangeByInput InputSource String
+  | OnClickCopy
 
 data Mode
   = ModeHex
@@ -331,7 +332,10 @@ render state =
       [ HH.div
         [ style $ "position: relative; width: 2.25rem; height: 2.25rem; border-radius: 100%; background-size: 0.75rem; background-image: url(" <> chessImage <> ")" ]
         [ HH.div
-          [ style $ "position: absolute; width: 100%; height: 100%; border-radius: 100%; background:" <> color ]
+          [ style $ "position: absolute; width: 100%; height: 100%; border-radius: 100%; cursor: pointer; background:" <> color
+          , HP.title "Copy color to clipboard"
+          , HE.onClick $ Just <<< const OnClickCopy
+          ]
           []
         ]
       , HH.div
@@ -557,3 +561,9 @@ handleAction (OnColorChangeByInput source value) = do
       InputAlpha -> Color.hsla h s l (fromMaybe a $ Number.fromString value)
       InputHex -> fromMaybe stateColor $ Util.fromHexString value
   handleColorChange color
+
+handleAction OnClickCopy = do
+  state <- H.get
+  let
+    stateColor = Color.hsva state.h state.s state.v state.a
+  H.liftEffect $ Util.copyToClipboard $ Util.toHexString stateColor

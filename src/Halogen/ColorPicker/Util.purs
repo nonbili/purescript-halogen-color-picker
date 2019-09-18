@@ -1,6 +1,7 @@
 module Halogen.ColorPicker.Util
   ( toHexString
   , fromHexString
+  , copyToClipboard
   ) where
 
 import Prelude
@@ -10,6 +11,9 @@ import Color as Color
 import Data.Int as Int
 import Data.Maybe (Maybe, fromMaybe)
 import Data.String as String
+import Effect (Effect)
+
+foreign import copyToClipboard :: String -> Effect Unit
 
 toHexString :: Color -> String
 toHexString color =
