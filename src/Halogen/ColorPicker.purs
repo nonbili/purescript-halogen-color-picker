@@ -162,7 +162,7 @@ saturationRef = H.RefLabel "saturation"
 renderSaturationLightnessPicker :: forall m. State -> HTML m
 renderSaturationLightnessPicker state =
   HH.div
-  [ style "position: relative; width: 320px; height: 200px;"
+  [ style "position: relative;"
   , HP.ref saturationRef
   , HE.onMouseDown $ Just <<< OnMouseDownPicker PickerSaturationLightness
   ]
@@ -227,7 +227,7 @@ renderAlphaPicker state =
 
 modeLabelStyle :: String
 modeLabelStyle =
-  "display: flex; justify-content: space-around; margin-top: 0.25rem; font-size: 0.75rem; color: #999;"
+  "display: flex; justify-content: space-around; margin-top: 0.5rem; font-size: 0.75rem; color: #999;"
 
 renderTextInput
   :: forall m
@@ -323,10 +323,10 @@ chessImage = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76L
 render :: forall m. State -> HTML m
 render state =
   HH.div
-  [ style "width: 20rem;"]
+  [ style "height: 100%; display: grid; grid-template-rows: 1fr auto;"]
   [ renderSaturationLightnessPicker state
   , HH.div
-    [ style "padding: 1rem;"]
+    [ style "padding: 1rem 1rem 0.5rem;"]
     [ HH.div
       [ style "margin-bottom: 1rem; display: flex; align-items: center;"]
       [ HH.div

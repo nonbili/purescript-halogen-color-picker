@@ -38,7 +38,7 @@ render state =
     [ style "background-color: white; box-shadow: 0 4px 8px 0 rgba(0,0,0,0.12), 0 2px 4px 0 rgba(0,0,0,0.08);"]
     [ HH.div_
       [ HH.div
-        [ style "display: inline-block; overflow: hidden;"]
+        [ style "width: 20rem; height: 20rem;"]
         [ HH.slot _picker unit CP.component state.color $ Just <<< HandleColorPicker ]
       ]
     , HH.div
