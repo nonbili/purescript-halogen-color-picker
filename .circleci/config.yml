@@ -9,23 +9,23 @@ jobs:
 
       - restore_cache:
           keys:
-          - deps-{{ checksum "bower.json" }}-{{ checksum "examples/bower.json" }}
+          - deps-{{ checksum "bower.json" }}-{{ checksum "examples/spago.dhall" }}
 
       - run:
           working_directory: examples
           command: |
             git checkout -b gh-pages
             git reset --hard origin/master
-            yarn add --dev bower purescript pulp
+            yarn add --dev parcel purescript spago
             yarn
             yarn build
 
       - save_cache:
           paths:
             - examples/node_modules
-            - examples/bower_components
+            - examples/.spago
             - output
-          key: deps-{{ checksum "bower.json" }}-{{ checksum "examples/bower.json" }}
+          key: deps-{{ checksum "bower.json" }}-{{ checksum "examples/spago.dhall" }}
 
       - run:
           command: |
