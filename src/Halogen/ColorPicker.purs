@@ -177,7 +177,7 @@ renderSaturationLightnessPicker state =
       [ style $ absolute <> "background: rgba(0, 0, 0, 0) linear-gradient(to top, rgb(0, 0, 0), rgba(0, 0, 0, 0)) repeat scroll 0% 0%;"]
       []
     , HH.div
-      [ style $ "position: absolute; height: 0.75rem; width: 0.75rem; transform: translate(-0.375rem, 0.375rem); border: 1px solid white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage state.s <> "; bottom: " <> percentage state.v
+      [ style $ "position: absolute; height: 0.75rem; width: 0.75rem; transform: translate(-0.375rem, 0.375rem); cursor: pointer; border: 1px solid white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage state.s <> "; bottom: " <> percentage state.v
       ]
       []
     ]
@@ -198,7 +198,7 @@ renderHuePicker state =
   , HE.onMouseDown $ Just <<< OnMouseDownPicker PickerHue
   ]
   [ HH.div
-    [ style $ "position: absolute; top: -0.125rem; height: 1rem; width: 1rem; transform: translateX(-0.5rem); background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage (state.h / 360.0) ]
+    [ style $ "position: absolute; top: -0.125rem; height: 1rem; width: 1rem; transform: translateX(-0.5rem); cursor: pointer; background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage (state.h / 360.0) ]
     []
   ]
 
@@ -217,7 +217,7 @@ renderAlphaPicker state =
     ]
     []
   , HH.div
-    [ style $ "position: absolute; top: -0.125rem; height: 1rem; width: 1rem; transform: translateX(-0.5rem); background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage state.a ]
+    [ style $ "position: absolute; top: -0.125rem; height: 1rem; width: 1rem; transform: translateX(-0.5rem); cursor: pointer; background: white; border-radius: 100%; box-shadow: " <> sliderShadow <> "; left: " <> percentage state.a ]
     []
   ]
   where
@@ -332,7 +332,7 @@ render state =
       [ HH.div
         [ style $ "position: relative; width: 2.25rem; height: 2.25rem; border-radius: 100%; background-size: 0.75rem; background-image: url(" <> chessImage <> ")" ]
         [ HH.div
-          [ style $ "position: absolute; width: 100%; height: 100%; border-radius: 100%; cursor: pointer; background:" <> color
+          [ style $ "position: absolute; width: 100%; height: 100%; border-radius: 100%; cursor: pointer; border: 1px solid #cbd5e0; background:" <> color
           , HP.title "Copy color to clipboard"
           , HE.onClick $ Just <<< const OnClickCopy
           ]
